@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101820" />
+    <title>Circuit Studio — ESP32 + IPS PCB</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Circuit Studio home">
+          <span class="brand-mark"><span></span><span></span><span></span></span>
+          <span class="brand-name">circuit<span>studio</span></span>
+        </a>
+        <div class="project-name"><span class="project-dot"></span><span id="projectTitle">ESP32 · IPS display board</span><span class="saved-label" id="savedLabel">Example project</span></div>
+        <div class="top-actions">
+          <button class="button button-ai" id="aiBuildButton" title="Generate an AI-ready design prompt">Build with AI <span aria-hidden="true">✳</span></button>
+          <button class="button button-quiet" id="openButton" title="Open a Circuit Studio JSON project">Open</button>
+          <button class="button button-quiet" id="saveButton" title="Download project as JSON">Save project</button>
+          <button class="button button-quiet" id="exportButton" title="Export active view as SVG">Export SVG</button>
+          <button class="button button-primary" id="shareButton" title="Create a local project copy">Save a copy <span aria-hidden="true">↗</span></button>
+          <input id="fileInput" type="file" accept=".json,application/json" hidden />
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="library-panel">
+          <div class="panel-heading">
+            <div><p class="eyebrow">LIBRARY</p><h1>Parts &amp; footprints</h1></div>
+            <button class="icon-button" id="newProjectButton" title="New project" aria-label="New project">＋</button>
+          </div>
+          <label class="search-box"><span aria-hidden="true">⌕</span><input id="componentSearch" type="search" placeholder="Find a component" /><kbd>/</kbd></label>
+          <div class="library-section"><span>PASSIVES</span><span>⌄</span></div>
+          <div class="component-list" id="componentList"></div>
+          <div class="library-section"><span>SEMICONDUCTORS</span><span>⌄</span></div>
+          <div class="component-list" id="semiconductorList"></div>
+          <div class="library-section"><span>POWER &amp; CONNECTORS</span><span>⌄</span></div>
+          <div class="component-list" id="powerList"></div>
+          <div class="library-footer"><span class="online-indicator"></span> Local component library <button title="Library settings">•••</button></div>
+        </aside>
+
+        <section class="editor-area">
+          <div class="document-tabs">
+            <button class="tab active" data-view="schematic"><span class="tab-icon">⌁</span> Schematic</button>
+            <button class="tab" data-view="board"><span class="tab-icon">▦</span> PCB layout</button>
+            <button class="add-tab" title="Add schematic sheet">＋</button>
+            <div class="tab-spacer"></div>
+            <button class="small-action" id="undoButton" title="Undo (Ctrl+Z)">↶</button>
+            <button class="small-action" id="redoButton" title="Redo (Ctrl+Shift+Z)">↷</button>
+            <span class="toolbar-divider"></span>
+            <button class="small-action" id="zoomOutButton" title="Zoom out">−</button>
+            <span class="zoom-label" id="zoomLabel">100%</span>
+            <button class="small-action" id="zoomInButton" title="Zoom in">＋</button>
+            <button class="small-action fit-button" id="fitButton" title="Fit drawing">Fit</button>
+          </div>
+
+          <div class="canvas-toolbar">
+            <div class="tool-group">
+              <button class="tool-button selected" data-tool="select" title="Select and move (V)"><span>↖</span><small>Select</small></button>
+              <button class="tool-button" data-tool="wire" title="Connect pins (W)"><span>⌁</span><small>Wire</small></button>
+              <button class="tool-button" id="textToolButton" title="Add a text note"><span>T</span><small>Text</small></button>
+            </div>
+            <div class="toolbar-hint" id="toolHint">Schematic · Click PCB layout to inspect footprints and routing</div>
+            <div class="tool-group right-tools">
+              <button class="icon-button mini" id="runChecksButton" title="Run electrical checks">✓</button>
+              <button class="icon-button mini" id="deleteButton" title="Delete selected item">⌫</button>
+            </div>
+          </div>
+
+          <div class="canvas-wrap" id="canvasWrap">
+            <div class="canvas-ruler ruler-top"><span>0</span><span>200</span><span>400</span><span>600</span><span>800</span><span>1000</span></div>
+            <div class="canvas-ruler ruler-left"><span>0</span><span>100</span><span>200</span><span>300</span><span>400</span><span>500</span></div>
+            <svg id="schematic" class="schematic" viewBox="0 0 1200 700" role="application" aria-label="Electronics schematic editor" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <pattern id="minorGrid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e8edf0" stroke-width="1" /></pattern>
+                <pattern id="majorGrid" width="100" height="100" patternUnits="userSpaceOnUse"><rect width="100" height="100" fill="url(#minorGrid)" /><path d="M 100 0 L 0 0 0 100" fill="none" stroke="#dce3e7" stroke-width="1" /></pattern>
+                <filter id="selectionGlow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#546cf5" flood-opacity=".45" /></filter>
+              </defs>
+              <rect class="sheet-background" x="0" y="0" width="1200" height="700" fill="url(#majorGrid)" />
+              <g id="wireLayer"></g>
+              <g id="componentLayer"></g>
+              <g id="netLabelLayer"></g>
+              <g id="annotationLayer"></g>
+              <g id="interactionLayer"></g>
+            </svg>
+            <svg id="pcbBoard" class="pcb-board hidden" viewBox="0 0 760 560" role="application" aria-label="PCB layout editor" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <pattern id="boardGrid" width="10" height="10" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".65" fill="#d8dee2" /></pattern>
+                <pattern id="antennaHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#fff7e8" /><line x1="0" y1="0" x2="0" y2="8" stroke="#efc578" stroke-width="2" /></pattern>
+              </defs>
+              <rect class="board-workspace" x="0" y="0" width="760" height="560" fill="url(#boardGrid)" />
+              <g id="boardLayer"></g>
+            </svg>
+            <div class="board-layer-toggle" id="boardLayerToggle" hidden><span>VISIBLE LAYER</span><button class="active" data-layer="F.Cu">F.Cu</button><button data-layer="B.Cu">B.Cu</button></div>
+            <div class="canvas-coordinate" id="coordinateReadout">X 0.0 · Y 0.0</div>
+          </div>
+
+          <footer class="statusbar">
+            <div><span class="status-icon">⌖</span><span id="statusMessage">ESP32-WROOM-32E · 6 parts · 76 × 52 mm</span></div>
+            <div class="status-right"><span class="status-dot"></span><span id="checkStatus">PCB project · 2 copper layers</span><span class="status-separator"></span><span id="gridStatus">Grid 1 mm</span><span class="status-separator"></span><span id="sheetStatus">Board 76 × 52 mm</span></div>
+          </footer>
+        </section>
+
+        <aside class="inspector-panel">
+          <div class="inspector-tabs"><button class="inspector-tab active" data-inspector="properties">Properties</button><button class="inspector-tab" data-inspector="checks">Checks <span class="check-count" id="checkCount">0</span></button></div>
+          <div id="inspectorContent"></div>
+          <div class="inspector-bottom"><button id="propertiesCheckButton"><span>✓</span> Run electrical checks</button></div>
+        </aside>
+      </main>
+    </div>
+    <dialog id="aiDialog" class="ai-dialog">
+      <div class="ai-dialog-header">
+        <div><p class="eyebrow">PROVIDER-NEUTRAL DESIGN COPILOT</p><h2>Build from a prompt</h2></div>
+        <button class="icon-button" id="aiCloseButton" aria-label="Close AI design dialog">×</button>
+      </div>
+      <p class="ai-intro">Describe the hardware, copy a project-aware prompt into your preferred AI assistant, then validate and load its Circuit Studio project response.</p>
+      <label class="field-label" for="aiMode">WORKING MODE</label>
+      <select class="field-select ai-mode" id="aiMode"><option value="new">Create a new PCB project</option><option value="modify">Modify the open project</option></select>
+      <label class="field-label" for="designBrief">WHAT SHOULD THE DESIGN DO?</label>
+      <textarea id="designBrief" class="ai-textarea ai-brief" placeholder="Example: Add a microSD card on SPI to the ESP32 display board. Keep the ST7789 on VSPI, use a separate CS pin, add the required pull-ups/decoupling, and keep all signals at 3.3 V."></textarea>
+      <div class="ai-step-row"><div><b>1</b><span>Describe the board</span></div><div><b>2</b><span>Copy the prompt to an AI assistant</span></div><div><b>3</b><span>Paste its JSON response here</span></div></div>
+      <button class="button button-ai-copy" id="copyAiPromptButton">Copy design prompt <span aria-hidden="true">⧉</span></button>
+      <details class="ai-prompt-preview"><summary>Review or copy the prompt manually</summary><textarea id="aiPromptPreview" class="ai-textarea ai-response" readonly placeholder="Your project-aware prompt will appear here after you click Copy design prompt."></textarea></details>
+      <label class="field-label" for="aiProjectResponse">AI-GENERATED CIRCUIT STUDIO JSON</label>
+      <textarea id="aiProjectResponse" class="ai-textarea ai-response" spellcheck="false" placeholder="Paste the complete .circuit.json response here…"></textarea>
+      <div class="ai-validation" id="aiValidation" role="status" aria-live="polite">The validator checks part types, footprints, pad-to-net references, board dimensions and routed-net endpoints.</div>
+      <div class="ai-dialog-footer"><span>No AI provider or API key is required by this handoff.</span><button class="button button-primary" id="validateAiProjectButton">Validate &amp; load</button></div>
+    </dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
