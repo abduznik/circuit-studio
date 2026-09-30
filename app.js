@@ -65,8 +65,13 @@
   let redoStack = [];
   let toastTimer;
   let aiGenerating = false;
+  let openCodeVerifiedToken = '';
+  let verifiedOpenCodeModels = [];
+  let preferredOpenCodeModel = '';
+  let preferredOpenCodeFamily = 'auto';
   const AI_SETTINGS_KEY = 'circuit-studio.ai-settings.v1';
   const AI_KEY_STORAGE_KEY = 'circuit-studio.ai-key.v1';
+  const AI_OPENCODE_TOKEN_KEY = 'circuit-studio.opencode-token.v1';
 
   const $ = (selector) => document.querySelector(selector);
   const svg = $('#schematic');
@@ -881,14 +886,16 @@
       if (saved.connectionMode) $('#aiConnectionMode').value = saved.connectionMode;
       if (saved.baseUrl) $('#aiBaseUrl').value = saved.baseUrl;
       if (saved.model) $('#aiModel').value = saved.model;
-      if (saved.opencodeUrl) $('#opencodeUrl').value = saved.opencodeUrl;
-      if (saved.opencodeProvider) $('#opencodeProvider').value = saved.opencodeProvider;
-      if (saved.opencodeModel) $('#opencodeModel').value = saved.opencodeModel;
-      if (saved.opencodeUsername) $('#opencodeUsername').value = saved.opencodeUsername;
+      if (saved.openCodeModel) preferredOpenCodeModel = saved.openCodeModel;
+      if (saved.openCodeFamily) { preferredOpenCodeFamily = saved.openCodeFamily; $('#openCodeFamily').value = saved.openCodeFamily; }
+      if (saved.openCodeOrgId) $('#opencodeOrgId').value = saved.openCodeOrgId;
+      if (saved.openCodeProxyUrl) $('#openCodeProxyUrl').value = saved.openCodeProxyUrl;
       const rememberedKey = localStorage.getItem(AI_KEY_STORAGE_KEY);
       if (rememberedKey) { $('#aiApiKey').value = rememberedKey; $('#rememberAiKey').checked = true; }
+      const rememberedOpenCodeToken = localStorage.getItem(AI_OPENCODE_TOKEN_KEY);
+      if (rememberedOpenCodeToken) { $('#opencodeToken').value = rememberedOpenCodeToken; $('#rememberOpenCodeToken').checked = true; }
     } catch { /* Local-file/private browsing modes may block localStorage; settings remain available for this tab. */ }
-    updateAiWorkflowUi(); updateAiConnectionUi(); updateAiKeyStorageState();
+    updateAiWorkflowUi(); updateAiConnectionUi(); updateAiKeyStorageState(); updateOpenCodeTokenStorageState();
   }
   function saveAiSettings() {
     const settings = {
@@ -896,10 +903,10 @@
       connectionMode: $('#aiConnectionMode').value,
       baseUrl: $('#aiBaseUrl').value.trim(),
       model: $('#aiModel').value.trim(),
-      opencodeUrl: $('#opencodeUrl').value.trim(),
-      opencodeProvider: $('#opencodeProvider').value.trim(),
-      opencodeModel: $('#opencodeModel').value.trim(),
-      opencodeUsername: $('#opencodeUsername').value.trim(),
+      openCodeModel: $('#openCodeModelSelect').value || preferredOpenCodeModel,
+      openCodeFamily: $('#openCodeFamily').value,
+      openCodeOrgId: $('#opencodeOrgId').value.trim(),
+      openCodeProxyUrl: $('#openCodeProxyUrl').value.trim(),
     };
     try { localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(settings)); } catch { /* The current form values still work for this tab. */ }
     persistAiKeyPreference();
@@ -913,9 +920,21 @@
     } catch { /* If storage is unavailable, the key remains only in this page's input. */ }
     updateAiKeyStorageState();
   }
+  function persistOpenCodeTokenPreference() {
+    const remember = $('#rememberOpenCodeToken').checked;
+    const token = $('#opencodeToken').value.trim();
+    try {
+      if (remember && token) localStorage.setItem(AI_OPENCODE_TOKEN_KEY, token);
+      else localStorage.removeItem(AI_OPENCODE_TOKEN_KEY);
+    } catch { /* A token can still be used for the current tab. */ }
+    updateOpenCodeTokenStorageState();
+  }
   function updateAiKeyStorageState() {
     const status = $('#aiKeyStorageState');
     status.textContent = $('#rememberAiKey').checked && $('#aiApiKey').value ? 'Saved in this browser only; never added to project files.' : $('#rememberAiKey').checked ? 'The key will be saved here after you enter it.' : 'Key stays in memory for this tab.';
+  }
+  function updateOpenCodeTokenStorageState() {
+    $('#openCodeTokenStorageState').textContent = $('#rememberOpenCodeToken').checked && $('#opencodeToken').value ? 'Saved unencrypted in this browser only; never in project files.' : $('#rememberOpenCodeToken').checked ? 'The token will be saved here after you enter it.' : 'Token stays in memory for this tab.';
   }
   function updateAiWorkflowUi() {
     const direct = $('#aiWorkflowMode').value === 'direct';
@@ -931,28 +950,32 @@
     updateAiFooterInfo();
   }
   function updateAiConnectionUi() {
-    const openCode = $('#aiConnectionMode').value === 'opencode';
+    const openCode = $('#aiConnectionMode').value === 'opencode-inference';
     $('#compatibleSettings').hidden = openCode;
     $('#opencodeSettings').hidden = !openCode;
+    $('#openCodeFamily').disabled = !verifiedOpenCodeModels.length;
     $('#aiGenerateRow').querySelector('span').textContent = openCode
-      ? 'OpenCode returns its answer when complete; the live preview fills in, then the validated design loads.'
+      ? 'Verify the token, choose a model, then generate. Parts/nets preview live and the board loads when inference completes.'
       : 'Response text and detected parts/nets stream live; the validated design loads when complete.';
+    updateOpenCodeGenerateState();
     updateAiFooterInfo();
   }
   function updateAiFooterInfo() {
     const direct = $('#aiWorkflowMode').value === 'direct';
-    const local = $('#aiConnectionMode').value === 'opencode';
+    const openCode = $('#aiConnectionMode').value === 'opencode-inference';
     $('#aiFooterInfo').textContent = !direct
       ? 'Copy/paste makes no AI request from Circuit Studio and needs no API key.'
-      : local
-        ? 'Direct browser-to-local OpenCode connection. OpenCode routes to its configured model/provider.'
+      : openCode
+        ? 'Your browser sends the verified token and prompt directly to OpenCode Inference, not through Circuit Studio.'
         : 'Direct browser-to-provider connection. The selected API receives your prompt and, if entered, your key.';
   }
   function bindAiSettings() {
     loadAiSettings();
     $('#aiWorkflowMode').addEventListener('change', () => { updateAiWorkflowUi(); saveAiSettings(); });
     $('#aiConnectionMode').addEventListener('change', () => { updateAiConnectionUi(); saveAiSettings(); });
-    ['aiBaseUrl', 'aiModel', 'opencodeUrl', 'opencodeProvider', 'opencodeModel', 'opencodeUsername'].forEach((id) => $(`#${id}`).addEventListener('change', saveAiSettings));
+    ['aiBaseUrl', 'aiModel', 'opencodeOrgId', 'openCodeProxyUrl'].forEach((id) => $(`#${id}`).addEventListener('change', saveAiSettings));
+    $('#openCodeModelSelect').addEventListener('change', () => { preferredOpenCodeModel = $('#openCodeModelSelect').value; saveAiSettings(); updateOpenCodeGenerateState(); updateOpenCodeModelStatus(); });
+    $('#openCodeFamily').addEventListener('change', () => { preferredOpenCodeFamily = $('#openCodeFamily').value; saveAiSettings(); updateOpenCodeModelStatus(); });
     $('#rememberAiKey').addEventListener('change', () => { persistAiKeyPreference(); saveAiSettings(); });
     $('#aiApiKey').addEventListener('change', persistAiKeyPreference);
     $('#aiApiKey').addEventListener('input', () => { if ($('#rememberAiKey').checked) persistAiKeyPreference(); });
@@ -960,8 +983,90 @@
     $('#toggleAiKeyButton').addEventListener('click', () => {
       const input = $('#aiApiKey'); const reveal = input.type === 'password'; input.type = reveal ? 'text' : 'password'; $('#toggleAiKeyButton').textContent = reveal ? 'Hide' : 'Show';
     });
+    $('#opencodeToken').addEventListener('input', () => {
+      if ($('#opencodeToken').value.trim() !== openCodeVerifiedToken) invalidateOpenCodeVerification();
+      updateOpenCodeTokenStorageState(); if ($('#rememberOpenCodeToken').checked) persistOpenCodeTokenPreference();
+    });
+    $('#rememberOpenCodeToken').addEventListener('change', () => { persistOpenCodeTokenPreference(); saveAiSettings(); });
+    $('#clearOpenCodeTokenButton').addEventListener('click', () => { $('#opencodeToken').value = ''; $('#rememberOpenCodeToken').checked = false; persistOpenCodeTokenPreference(); saveAiSettings(); invalidateOpenCodeVerification(); });
+    $('#toggleOpenCodeTokenButton').addEventListener('click', () => {
+      const input = $('#opencodeToken'); const reveal = input.type === 'password'; input.type = reveal ? 'text' : 'password'; $('#toggleOpenCodeTokenButton').textContent = reveal ? 'Hide' : 'Show';
+    });
+    $('#verifyOpenCodeTokenButton').addEventListener('click', verifyOpenCodeToken);
     $('#generateAiProjectButton').addEventListener('click', generateAiProject);
   }
+  function invalidateOpenCodeVerification() {
+    openCodeVerifiedToken = ''; verifiedOpenCodeModels = [];
+    const select = $('#openCodeModelSelect'); select.replaceChildren(new Option('Verify token to load models', '')); select.disabled = true;
+    $('#openCodeFamily').disabled = true;
+    setOpenCodeVerifyStatus('Token changed. Verify it to load available models.'); updateOpenCodeGenerateState();
+  }
+  function setOpenCodeVerifyStatus(message, state = '') {
+    const label = $('#openCodeVerifyStatus'); label.textContent = message; label.classList.toggle('error', state === 'error'); label.classList.toggle('success', state === 'success');
+  }
+  function detectOpenCodeFamily(modelID) {
+    const family = openCodeFamilyFor(modelID);
+    return family === 'unsupported' ? 'openai-chat' : family;
+  }
+  function fillOpenCodeModelSelect(models) {
+    const select = $('#openCodeModelSelect');
+    const usable = models.filter((model) => openCodeFamilyFor(model.id) !== 'unsupported');
+    const order = ['openai-responses', 'anthropic', 'gemini', 'openai-chat'];
+    const groups = new Map(order.map((family) => [family, []]));
+    usable.forEach((model) => groups.get(openCodeFamilyFor(model.id)).push(model));
+    select.replaceChildren();
+    order.forEach((family) => {
+      const entries = groups.get(family);
+      if (!entries.length) return;
+      const group = document.createElement('optgroup');
+      group.label = familyLabel(family);
+      entries.forEach((model) => group.appendChild(new Option(model.name, model.id)));
+      select.appendChild(group);
+    });
+    return usable;
+  }
+  function updateOpenCodeModelStatus() {
+    if (!openCodeVerifiedToken) return;
+    const model = $('#openCodeModelSelect').value;
+    if (!model) { setOpenCodeVerifyStatus(`Token verified · ${verifiedOpenCodeModels.length} models loaded.`, 'success'); return; }
+    const chosen = $('#openCodeFamily').value;
+    const family = chosen === 'auto' ? detectOpenCodeFamily(model) : chosen;
+    setOpenCodeVerifyStatus(`Token verified · ${verifiedOpenCodeModels.length} models loaded · ${model} via ${familyLabel(family)}${chosen === 'auto' ? ' (auto)' : ' (manual)'}.`, 'success');
+  }
+  function updateOpenCodeGenerateState() {
+    const button = $('#generateAiProjectButton'); if (!button) return;
+    const needsOpenCodeModel = $('#aiConnectionMode').value === 'opencode-inference';
+    const ready = !needsOpenCodeModel || (openCodeVerifiedToken && openCodeVerifiedToken === $('#opencodeToken').value.trim() && !!$('#openCodeModelSelect').value);
+    button.disabled = aiGenerating || !ready;
+  }
+  async function verifyOpenCodeToken() {
+    const token = $('#opencodeToken').value.trim();
+    if (!token) { setOpenCodeVerifyStatus('Enter your OpenCode Inference service-account token.', 'error'); return; }
+    const button = $('#verifyOpenCodeTokenButton'); button.disabled = true; button.textContent = 'Verifying…';
+    setOpenCodeVerifyStatus('Contacting OpenCode Inference and loading its model list…');
+    try {
+      const response = await fetch('https://opencode.ai/inference/v1/models', { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error(`OpenCode returned HTTP ${response.status}.`);
+      const result = await response.json();
+      const models = Array.isArray(result.data) ? result.data.filter((item) => item?.id).map((item) => ({ id: String(item.id), name: String(item.name || item.id) })) : [];
+      if (!models.length) throw new Error('OpenCode returned no models. Check the token and try again.');
+      openCodeVerifiedToken = token; verifiedOpenCodeModels = models;
+      const select = $('#openCodeModelSelect');
+      const usable = fillOpenCodeModelSelect(models);
+      if (!usable.length) throw new Error('OpenCode returned only models that this app cannot call as a chat model.');
+      select.disabled = false;
+      preferredOpenCodeModel = usable.some((model) => model.id === preferredOpenCodeModel) ? preferredOpenCodeModel : usable[0].id;
+      select.value = preferredOpenCodeModel;
+      if (!['auto', 'openai-chat', 'openai-responses', 'anthropic', 'gemini'].includes($('#openCodeFamily').value)) $('#openCodeFamily').value = 'auto';
+      preferredOpenCodeFamily = $('#openCodeFamily').value;
+      $('#openCodeFamily').disabled = false;
+      updateOpenCodeModelStatus();
+      saveAiSettings(); updateOpenCodeGenerateState();
+    } catch (error) {
+      invalidateOpenCodeVerification(); setOpenCodeVerifyStatus(`${error.message} Check connectivity, token, and browser CORS permission.`, 'error');
+    } finally { button.disabled = false; button.textContent = 'Verify token & load models'; }
+  }
+  function familyLabel(family) { return ({ 'openai-chat': 'OpenAI Chat Completions', 'openai-responses': 'OpenAI Responses', anthropic: 'Anthropic Messages', gemini: 'Gemini' })[family] || family; }
   function baseApiUrl(raw, suffix) {
     const url = new URL(raw.trim());
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Enter an HTTP(S) API base URL without embedded credentials, query parameters, or fragments.');
@@ -976,10 +1081,11 @@
     const button = $('#generateAiProjectButton'); aiGenerating = true; button.disabled = true; button.textContent = 'Generating…';
     $('#aiProjectResponse').value = '';
     updateAiLivePreview('');
-    setAiValidation($('#aiConnectionMode').value === 'opencode' ? 'Connecting to your local OpenCode server…' : 'Connecting directly to the configured API…');
+    const openCode = $('#aiConnectionMode').value === 'opencode-inference';
+    setAiValidation(openCode ? 'Sending the design brief to OpenCode Inference…' : 'Connecting directly to the configured API…');
     try {
-      const output = $('#aiConnectionMode').value === 'opencode'
-        ? await generateThroughOpenCode(userPrompt)
+      const output = openCode
+        ? await generateThroughOpenCodeInference(userPrompt)
         : await generateThroughCompatibleApi(userPrompt);
       $('#aiProjectResponse').value = output;
       $('#aiProjectResponse').dispatchEvent(new Event('input', { bubbles: true }));
@@ -987,7 +1093,7 @@
       validateAndLoadAiProject();
     } catch (error) {
       setAiValidation(`${error.message}\n\nNo project was loaded. Check the endpoint, model, credentials, and browser CORS permission, then retry.`, 'error');
-    } finally { aiGenerating = false; button.disabled = false; button.textContent = 'Generate project with AI'; }
+    } finally { aiGenerating = false; button.textContent = 'Generate project with AI'; updateOpenCodeGenerateState(); }
   }
   function updateAiStream(text) {
     $('#aiProjectResponse').value = text;
@@ -1075,32 +1181,136 @@
     if (Array.isArray(content)) return content.map((part) => part.text || '').join('');
     return '';
   }
-  function openCodeAuthHeaders() {
-    const headers = { 'Content-Type': 'application/json' };
-    const password = $('#opencodePassword').value;
-    if (password) headers.Authorization = `Basic ${btoa(unescape(encodeURIComponent(`${$('#opencodeUsername').value || 'opencode'}:${password}`)))}`;
-    return headers;
+  const OPENCODE_ORIGIN = 'https://opencode.ai';
+  const OPENCODE_SYSTEM_HINT = 'The requested output must be one complete JSON object for Circuit Studio. Reply with JSON only, without commentary or markdown fences.';
+  const OPENCODE_UNSUPPORTED = /^jev-/;
+  const OPENCODE_FAMILY_RULES = [
+    { family: 'gemini', test: /^gemini-/ },
+    { family: 'anthropic', test: /^claude-/ },
+    { family: 'openai-responses', test: /^(gpt|grok|muse-spark)-/ },
+    { family: 'anthropic', test: /^qwen3\.(?:[567]-|8-flash)/ },
+    { family: 'openai-chat', test: /^qwen3\.8-max/ },
+  ];
+  function openCodeFamilyFor(modelID) {
+    if (OPENCODE_UNSUPPORTED.test(String(modelID).toLowerCase())) return 'unsupported';
+    const rule = OPENCODE_FAMILY_RULES.find((entry) => entry.test.test(String(modelID).toLowerCase()));
+    return rule ? rule.family : 'openai-chat';
   }
-  async function generateThroughOpenCode(userPrompt) {
-    const url = new URL($('#opencodeUrl').value.trim());
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Enter a valid OpenCode server URL without embedded credentials or query parameters.');
-    const localHost = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-    if (url.protocol !== 'https:' && !localHost) throw new Error('Use HTTPS for remote OpenCode servers; plain HTTP is limited to localhost.');
-    const base = `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
-    const providerID = $('#opencodeProvider').value.trim(), modelID = $('#opencodeModel').value.trim();
-    if (!base || !providerID || !modelID) throw new Error('Enter the OpenCode server URL, provider ID, and model ID.');
-    setAiValidation('Creating a local OpenCode session…');
-    const headers = openCodeAuthHeaders();
-    const sessionResponse = await fetch(`${base}/session`, { method: 'POST', headers, body: JSON.stringify({ title: `Circuit Studio: ${project.name || 'PCB design'}` }) });
-    if (!sessionResponse.ok) throw new Error(`OpenCode session request failed (${sessionResponse.status}).`);
-    const session = await sessionResponse.json(); if (!session.id) throw new Error('OpenCode did not return a session ID.');
-    setAiValidation('Sending the design brief to your local OpenCode server…');
-    const response = await fetch(`${base}/session/${encodeURIComponent(session.id)}/message`, { method: 'POST', headers, body: JSON.stringify({ model: { providerID, modelID }, system: buildAiSystemPrompt(), tools: {}, parts: [{ type: 'text', text: userPrompt }] }) });
-    if (!response.ok) { const detail = (await response.text()).slice(0, 400); throw new Error(`OpenCode returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`); }
-    const result = await response.json();
-    const text = (result.parts || []).filter((part) => part.type === 'text').map((part) => part.text || '').join('\n');
-    if (!text) throw new Error('OpenCode returned no assistant text.');
-    updateAiStream(text); return text;
+  function openCodeEndpointURL(target) {
+    const proxy = $('#openCodeProxyUrl').value.trim();
+    if (!proxy) throw new Error('OpenCode generation needs a CORS proxy URL. OpenCode sends no CORS headers for generation, so a browser cannot call it from this page. Deploy the Worker in proxy/opencode-cors-worker.js and paste its URL here.');
+    const url = new URL(proxy);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Enter a plain HTTPS CORS proxy URL without credentials, query parameters, or fragments.');
+    const [path, search = ''] = target.split('?');
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/${path}`;
+    url.search = search;
+    return url.toString();
+  }
+  function openCodeInferenceRequest(userPrompt) {
+    const token = $('#opencodeToken').value.trim();
+    if (!token || token !== openCodeVerifiedToken) throw new Error('Verify your OpenCode Inference token before generating, then select a model.');
+    const model = $('#openCodeModelSelect').value;
+    if (!model) throw new Error('Select a verified OpenCode model before generating.');
+    const family = $('#openCodeFamily').value === 'auto' ? detectOpenCodeFamily(model) : $('#openCodeFamily').value;
+    if (!['openai-chat', 'openai-responses', 'anthropic', 'gemini'].includes(family)) throw new Error('Choose a valid OpenCode API family.');
+    const system = `${buildAiSystemPrompt()}\n\n${OPENCODE_SYSTEM_HINT}`;
+    const user = `${userPrompt}`;
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Accept: 'text/event-stream' };
+    const orgId = $('#opencodeOrgId').value.trim();
+    if (orgId) headers['x-opencode-org-id'] = orgId;
+    if (family === 'openai-chat') return {
+      family, model, headers,
+      url: openCodeEndpointURL('inference/openai/v1/chat/completions'),
+      body: { model, stream: true, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] },
+    };
+    if (family === 'openai-responses') return {
+      family, model, headers,
+      url: openCodeEndpointURL('inference/openai/v1/responses'),
+      body: { model, stream: true, instructions: system, input: [{ role: 'user', content: [{ type: 'input_text', text: user }] }] },
+    };
+    if (family === 'anthropic') return {
+      family, model, headers: { ...headers, 'anthropic-version': '2023-06-01' },
+      url: openCodeEndpointURL('inference/anthropic/v1/messages'),
+      body: { model, stream: true, max_tokens: 16000, system, messages: [{ role: 'user', content: user }] },
+    };
+    return {
+      family, model, headers,
+      url: openCodeEndpointURL(`inference/google/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`),
+      body: { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }] },
+    };
+  }
+  function openCodeDeltaText(chunk, family) {
+    if (family === 'openai-chat') {
+      const delta = chunk?.choices?.[0]?.delta?.content;
+      if (typeof delta === 'string') return delta;
+      if (Array.isArray(delta)) return delta.map((part) => part.text || '').join('');
+      return '';
+    }
+    if (family === 'openai-responses') {
+      if (chunk?.type === 'response.output_text.delta' && typeof chunk.delta === 'string') return chunk.delta;
+      if (chunk?.type === 'response.completed' && typeof chunk.response?.output_text === 'string') return '';
+      return '';
+    }
+    if (family === 'anthropic') {
+      if (chunk?.type === 'content_block_delta' && typeof chunk.delta?.text === 'string') return chunk.delta.text;
+      return '';
+    }
+    const parts = chunk?.candidates?.[0]?.content?.parts;
+    return Array.isArray(parts) ? parts.map((part) => part.text || '').join('') : '';
+  }
+  function openCodeWholeResponseText(result, family) {
+    if (family === 'openai-chat') return compatibleResponseText(result);
+    if (family === 'openai-responses') return typeof result?.output_text === 'string' ? result.output_text : (result?.output || []).flatMap((item) => item.content || []).map((part) => part.text || '').join('');
+    if (family === 'anthropic') return (result?.content || []).map((part) => part.text || '').join('');
+    return (result?.candidates?.[0]?.content?.parts || []).map((part) => part.text || '').join('');
+  }
+  function openCodeGeminiBulkText(raw) {
+    const fromChunks = raw.split('\n').map((line) => line.trim().replace(/^data:\s*/, '')).filter(Boolean).flatMap((line) => {
+      try { const parsed = JSON.parse(line); return Array.isArray(parsed) ? parsed : [parsed]; } catch { return []; }
+    });
+    const text = fromChunks.map((chunk) => openCodeDeltaText(chunk, 'gemini')).join('');
+    if (text) return text;
+    return [...raw.matchAll(/"text"\s*:\s*("(?:[^"\\]|\\.)*")/g)].map((match) => { try { return JSON.parse(match[1]); } catch { return ''; } }).join('');
+  }
+  async function generateThroughOpenCodeInference(userPrompt) {
+    const request = openCodeInferenceRequest(userPrompt);
+    setAiValidation(`Generating with OpenCode Inference · ${request.model} · ${familyLabel(request.family)}…`);
+    let response;
+    try { response = await fetch(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify(request.body) }); }
+    catch (error) { throw new Error(`Could not reach the OpenCode endpoint (${error.message}). Check the CORS proxy URL, that it is deployed, and that it allows this site. See the "Why a proxy?" note in the OpenCode panel.`); }
+    if (!response.ok) { const detail = (await response.text()).slice(0, 500); throw new Error(`OpenCode Inference returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`); }
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/event-stream') || !response.body?.getReader) {
+      const raw = await response.text();
+      let text = '';
+      try { text = openCodeWholeResponseText(JSON.parse(raw), request.family); } catch { text = ''; }
+      if (!text.trim() && request.family === 'gemini') text = openCodeGeminiBulkText(raw);
+      if (!text.trim()) throw new Error('OpenCode Inference returned no assistant text.');
+      updateAiStream(text); return text;
+    }
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let output = ''; let stopped = false;
+    const consumeEvent = (event) => {
+      const data = event.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
+      if (!data || data === '[DONE]') { if (data === '[DONE]') stopped = true; return; }
+      let chunk; try { chunk = JSON.parse(data); } catch { return; }
+      if (request.family === 'openai-responses' && (chunk?.type === 'response.failed' || chunk?.type === 'response.error')) {
+        const detail = chunk.response?.error?.message || chunk.message || 'unknown streaming error';
+        throw new Error(`OpenCode Inference stream error: ${detail}`);
+      }
+      if (request.family === 'anthropic' && chunk?.type === 'error') throw new Error(`OpenCode Inference stream error: ${chunk.error?.message || 'unknown streaming error'}`);
+      const delta = openCodeDeltaText(chunk, request.family);
+      if (delta) { output += delta; updateAiStream(output); }
+    };
+    while (!stopped) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }); buffer = buffer.replace(/\r\n/g, '\n');
+      let boundary;
+      while ((boundary = buffer.indexOf('\n\n')) >= 0) { consumeEvent(buffer.slice(0, boundary)); buffer = buffer.slice(boundary + 2); if (stopped) break; }
+    }
+    buffer += decoder.decode(); if (buffer.trim()) consumeEvent(buffer);
+    if (!output.trim()) throw new Error('The OpenCode Inference stream ended without generated text.');
+    return output;
   }
   function validateAndLoadAiProject() {
     const source = $('#aiProjectResponse').value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');

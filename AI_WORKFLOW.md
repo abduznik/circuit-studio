@@ -8,12 +8,38 @@ Circuit Studio's **Build with AI** dialog creates a prompt from the user's desig
 2. Choose **Create a new PCB project** or **Modify the open project**.
 3. Choose one of two methods:
    - **Copy/paste:** copy the generated prompt to an external assistant, then paste its JSON response into Circuit Studio and choose **Validate & load**.
-   - **Direct API:** configure an OpenAI-compatible endpoint or connect to a local OpenCode server. Choose **Generate project with AI** to stream response text and progressively detected parts/nets into the live preview, validate it, and load it automatically when complete.
+   - **Direct API:** configure an OpenAI-compatible endpoint, or use the hosted OpenCode Inference API. Choose **Generate project with AI** to stream response text and progressively detected parts/nets into the live preview, validate it, and load it automatically when complete.
 4. Inspect the schematic and board, adjust placements/routes, run footprint/net checks, then save the `.circuit.json` project.
 
 Copy/paste works without an API key and makes no AI request from Circuit Studio. Direct API mode sends the prompt to the configured endpoint. For a direct OpenAI-compatible connection, Circuit Studio's browser sends the bearer API key to that endpoint; it never goes through a Circuit Studio backend. If **Remember key on this browser** is selected, the key is stored unencrypted in this browser's local storage and is not included in project files. Any script executing on the site origin can read browser local storage, so OpenAI recommends keeping API keys server-side. Do not use a high-privilege key in a public browser app.
 
-OpenCode mode sends the prompt to the user's OpenCode server, usually on localhost. Circuit Studio does not collect the model-provider key in this mode. OpenCode routes the prompt using its configured credentials: a local model can keep inference on-device; a cloud provider receives the prompt when selected. For GitHub Pages, allow the site's exact origin in OpenCode CORS, e.g. `opencode serve --cors https://abduznik.github.io`. A password-protected server may also require its local Basic Auth credentials in the UI.
+## OpenCode Inference
+
+OpenCode mode talks to OpenCode's hosted inference gateway at `https://opencode.ai/inference`. It does **not** use a local `opencode serve` session.
+
+1. Paste a Console **service-account key** in the token field. An Org ID is only needed for a user session token, which also requires the `x-opencode-org-id` header.
+2. Choose **Verify token & load models**. Circuit Studio calls `GET /inference/v1/models` with `Authorization: Bearer <token>`. A `401`/`403` clears the model list and reports the HTTP status; a network error is reported as a connectivity/CORS problem. Editing or clearing the token invalidates verification, so a model can only be chosen after a successful check.
+3. Pick a model. The list is grouped by the API family OpenCode serves that model with, and the status line shows the resolved endpoint. **API FAMILY** overrides the detected family if OpenCode adds a model that the app cannot classify yet.
+4. Paste a CORS proxy URL (see below) and choose **Generate project with AI**.
+
+| Family | Endpoint | Request shape | Stream text |
+| --- | --- | --- | --- |
+| OpenAI Chat Completions | `POST /inference/openai/v1/chat/completions` | `model`, `messages`, `stream` | `choices[0].delta.content` |
+| OpenAI Responses | `POST /inference/openai/v1/responses` | `model`, `instructions`, `input`, `stream` | `response.output_text.delta` events |
+| Anthropic Messages | `POST /inference/anthropic/v1/messages` | `model`, `max_tokens` (required), `system`, `messages`, `stream` | `content_block_delta` events with `delta.text` |
+| Gemini | `POST /inference/google/v1beta/models/<model>:streamGenerateContent?alt=sse` | `systemInstruction`, `contents` | `candidates[0].content.parts[].text` |
+
+Family detection follows OpenCode's published endpoint table, which is *not* a simple prefix rule: `grok-*` and `muse-spark-*` use Responses, `qwen3.6-plus`/`qwen3.7-*`/`qwen3.8-flash` use Anthropic Messages, but `qwen3.8-max` uses Chat Completions, and `kimi-*`, `glm-*`, `minimax-*`, `deepseek-*`, and the free models use Chat Completions. `jev-*` models use OpenCode's System One endpoint and are filtered out of the list because they do not return text. Non-streaming JSON responses are supported as a fallback, including a chunked-array shape for Gemini.
+
+### CORS proxy (required for generation)
+
+`GET /inference/v1/models` sends `Access-Control-Allow-Origin: *`, so token verification and the model list work straight from the browser. The generation endpoints send no CORS headers and their `OPTIONS` preflight returns `404`, so a static page **cannot** call them directly. `proxy/opencode-cors-worker.js` is a ready-to-deploy Cloudflare Worker that forwards the four generation paths to `https://opencode.ai` and adds CORS headers, streaming responses included.
+
+1. Sign in at <https://dash.cloudflare.com>, create a Worker, and replace the generated code with `proxy/opencode-cors-worker.js`.
+2. Deploy it and paste the worker URL into **CORS proxy URL**. The worker allow-lists upstream paths, so it cannot be used as an open relay.
+
+The worker sees the OpenCode token, so deploy it yourself and keep it private. Nothing is sent through a Circuit Studio backend; requests go from the browser to the proxy to OpenCode.
+
 
 ## Project contract (version 2)
 
@@ -83,7 +109,7 @@ Use only listed footprints unless the library is extended first. If the user's e
 
 **Validate & load** checks JSON syntax, version/type support, unique references and IDs, footprint availability, pad/net assignments, board extents, copper layers, and track endpoint/net agreement. These checks catch common AI output mistakes but do not perform geometric collision detection, clearance checks, full ERC, signal-integrity analysis, or fabrication DRC. Review datasheets and inspect the board in an engineering CAD tool before manufacturing.
 
-The live API flow uses an HTTP `POST` to `/v1/chat/completions` with streaming enabled for OpenAI-compatible endpoints. It streams generated text and completed component/net records into the live preview; the full board is loaded after the JSON response passes validation. OpenCode mode uses the local server's session/message HTTP APIs and displays its response when the server finishes.
+The live API flow uses an HTTP `POST` to `/v1/chat/completions` with streaming enabled for OpenAI-compatible endpoints, and to the matching OpenCode family endpoint for OpenCode mode. Both stream generated text and completed component/net records into the live preview; the full board is loaded after the JSON response passes validation. A non-streaming JSON response is also accepted.
 
 ## Guidance for future contributors
 
@@ -97,5 +123,5 @@ The live API flow uses an HTTP `POST` to `/v1/chat/completions` with streaming e
 
 - [OpenAI API authentication and key handling](https://platform.openai.com/docs/api-reference/responses#authentication)
 - [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create)
-- [OpenCode HTTP server](https://dev.opencode.ai/docs/server)
-- [OpenCode providers and OpenAI-compatible endpoints](https://opencode.ai/docs/providers)
+- [OpenCode Inference API](https://opencode.ai/v2/docs/console/inference)
+- [OpenCode Console model endpoints and pricing](https://opencode.ai/v2/docs/console/models)

@@ -26,8 +26,9 @@ The display is treated as a breakout connected by a generic 1×8 header, not as 
 - In PCB view, switch F.Cu/B.Cu, drag footprints, double-click to rotate, and click a part to inspect its footprint and pad-to-net mapping.
 - In schematic view, use `V` to select and `W` to connect symbol pins.
 - **Save project** downloads a `.circuit.json` design file; **Open** loads that format. **Export SVG** exports the active view.
-- **Build with AI** offers copy/paste prompting or direct streaming through an OpenAI-compatible endpoint / local OpenCode server. In direct mode, generated parts/nets appear in a live preview; the response is validated before loading.
-- Direct API mode sends the prompt and API key from the browser straight to the configured endpoint—not through Circuit Studio. Remembered keys are stored unencrypted in this browser and OpenAI recommends server-side key storage. OpenCode mode sends the prompt to the user's local OpenCode server instead.
+- **Build with AI** offers copy/paste prompting or direct streaming through an OpenAI-compatible endpoint / the hosted OpenCode Inference API. In direct mode, generated parts/nets appear in a live preview; the response is validated before loading.
+- Direct API mode sends the prompt and API key from the browser straight to the configured endpoint—not through Circuit Studio. Remembered keys are stored unencrypted in this browser and OpenAI recommends server-side key storage.
+- OpenCode mode pastes a Console service-account token, verifies it against `GET /inference/v1/models`, then loads a grouped model list and routes the request to the model's API family (OpenAI Responses, Anthropic Messages, Gemini, or OpenAI Chat Completions). Token verification works directly from the browser, but OpenCode's generation endpoints send no CORS headers, so generation needs the small pass-through proxy in [`proxy/opencode-cors-worker.js`](proxy/opencode-cors-worker.js). See [AI_WORKFLOW.md](AI_WORKFLOW.md#opencode-inference) for the deploy steps.
 - Undo/redo: `Ctrl/⌘+Z` and `Ctrl/⌘+Shift+Z`.
 
 ## Current model
