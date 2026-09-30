@@ -1,0 +1,4 @@
+{
+  "proxyUrl": "",
+  "_comment": "Optional default CORS proxy for OpenCode Inference generation, used when the user leaves the CORS proxy URL field empty. OpenCode's generation endpoints send no CORS headers, so a static page cannot call them directly. Deploy proxy/opencode-cors-worker.js, then paste that worker's public URL here to give every visitor a working default. An empty value means the app tries OpenCode directly first and explains the limitation if the browser blocks it."
+}

@@ -17,10 +17,10 @@ Copy/paste works without an API key and makes no AI request from Circuit Studio.
 
 OpenCode mode talks to OpenCode's hosted inference gateway at `https://opencode.ai/inference`. It does **not** use a local `opencode serve` session.
 
-1. Paste a Console **service-account key** in the token field. An Org ID is only needed for a user session token, which also requires the `x-opencode-org-id` header.
+1. Paste a Console **service-account key** in the token field. An Org ID is only needed for a user session token, which also requires the `x-opencode-org-id` header. Free models are reserved for the OpenCode app, so the account needs credits and a paid model.
 2. Choose **Verify token & load models**. Circuit Studio calls `GET /inference/v1/models` with `Authorization: Bearer <token>`. A `401`/`403` clears the model list and reports the HTTP status; a network error is reported as a connectivity/CORS problem. Editing or clearing the token invalidates verification, so a model can only be chosen after a successful check.
 3. Pick a model. The list is grouped by the API family OpenCode serves that model with, and the status line shows the resolved endpoint. **API FAMILY** overrides the detected family if OpenCode adds a model that the app cannot classify yet.
-4. Paste a CORS proxy URL (see below) and choose **Generate project with AI**.
+4. Choose **Generate project with AI**. Generation uses the site's default CORS proxy when one is configured, a proxy URL you entered if you set one, and otherwise calls OpenCode directly.
 
 | Family | Endpoint | Request shape | Stream text |
 | --- | --- | --- | --- |
@@ -31,14 +31,28 @@ OpenCode mode talks to OpenCode's hosted inference gateway at `https://opencode.
 
 Family detection follows OpenCode's published endpoint table, which is *not* a simple prefix rule: `grok-*` and `muse-spark-*` use Responses, `qwen3.6-plus`/`qwen3.7-*`/`qwen3.8-flash` use Anthropic Messages, but `qwen3.8-max` uses Chat Completions, and `kimi-*`, `glm-*`, `minimax-*`, `deepseek-*`, and the free models use Chat Completions. `jev-*` models use OpenCode's System One endpoint and are filtered out of the list because they do not return text. Non-streaming JSON responses are supported as a fallback, including a chunked-array shape for Gemini.
 
-### CORS proxy (required for generation)
+### CORS: why generation needs a proxy, and how to avoid setting one up
 
-`GET /inference/v1/models` sends `Access-Control-Allow-Origin: *`, so token verification and the model list work straight from the browser. The generation endpoints send no CORS headers and their `OPTIONS` preflight returns `404`, so a static page **cannot** call them directly. `proxy/opencode-cors-worker.js` is a ready-to-deploy Cloudflare Worker that forwards the four generation paths to `https://opencode.ai` and adds CORS headers, streaming responses included.
+`GET /inference/v1/models` sends `Access-Control-Allow-Origin: *`, so token verification and the model list work straight from the browser. The generation endpoints send **no** CORS headers and answer `OPTIONS` preflight with `404`, so a static page cannot call them directly. This is a confirmed upstream bug, not a misconfiguration: [anomalyco/opencode#31041](https://github.com/anomalyco/opencode/issues/31041) and [#41224](https://github.com/anomalyco/opencode/issues/41224). A preflight-free `POST` was also tested and still returns no `Access-Control-Allow-Origin`, so no header trick avoids it.
+
+Circuit Studio therefore resolves the endpoint in this order, so nobody has to configure anything for the common case:
+
+1. **Your URL** in the **CORS proxy URL** field, if filled in.
+2. **This site's default**, read at runtime from `proxy/config.json`. Set `"proxyUrl"` there to a deployed worker and every visitor gets a working OpenCode mode with zero setup.
+3. **OpenCode directly**, when no proxy is configured. If OpenCode fixes the CORS bug, this path starts working with no further changes.
+
+If a direct call fails, the error names the upstream issue and points at the proxy field rather than showing a generic network failure. Token verification also falls back to a configured proxy if the direct `GET` ever fails.
+
+`proxy/opencode-cors-worker.js` is a ready-to-deploy Cloudflare Worker that forwards the four generation paths to `https://opencode.ai` and adds CORS headers, streaming responses included.
 
 1. Sign in at <https://dash.cloudflare.com>, create a Worker, and replace the generated code with `proxy/opencode-cors-worker.js`.
-2. Deploy it and paste the worker URL into **CORS proxy URL**. The worker allow-lists upstream paths, so it cannot be used as an open relay.
+2. Deploy it, then put its public URL in `proxy/config.json` (`"proxyUrl"`) to make it the site default, or have each user paste it into the field.
 
-The worker sees the OpenCode token, so deploy it yourself and keep it private. Nothing is sent through a Circuit Studio backend; requests go from the browser to the proxy to OpenCode.
+The worker allow-lists upstream paths, so it cannot be used as an open relay. It does see the OpenCode token, so deploy it yourself and keep it private. Nothing is sent through a Circuit Studio application server; requests go browser → proxy → OpenCode.
+
+### Paid models only
+
+OpenCode's free models are reserved for the OpenCode app: calling them from a third-party client returns `403` with `"type":"FreeTierError"` and the message `OpenCode's free tier can only be used from within OpenCode`. Circuit Studio detects that response and tells the user to pick a paid model with Console credits. A service-account key with credits is therefore required; a bare token is not enough.
 
 
 ## Project contract (version 2)

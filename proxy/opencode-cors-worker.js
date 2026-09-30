@@ -16,8 +16,10 @@
  * --------------------------------------
  * 1. Sign in at https://dash.cloudflare.com and create a Worker.
  * 2. Replace the generated code with the contents of this file.
- * 3. Deploy, then paste the worker URL (https://<name>.<subdomain>.workers.dev)
- *    into Circuit Studio's "CORS proxy URL" field.
+ * 3. Deploy, then put the worker URL (https://<name>.<subdomain>.workers.dev) into
+ *    config.json as "proxyUrl" to make it this site's default, so every visitor gets a
+ *    working OpenCode mode without configuring anything. Individual users can still
+ *    override it in the app's "CORS proxy URL" field.
  *
  * The Worker keeps a strict allow-list of upstream paths, so it cannot be used to
  * request arbitrary URLs.

@@ -72,6 +72,7 @@
   const AI_SETTINGS_KEY = 'circuit-studio.ai-settings.v1';
   const AI_KEY_STORAGE_KEY = 'circuit-studio.ai-key.v1';
   const AI_OPENCODE_TOKEN_KEY = 'circuit-studio.opencode-token.v1';
+  const OPENCODE_ORIGIN = 'https://opencode.ai';
 
   const $ = (selector) => document.querySelector(selector);
   const svg = $('#schematic');
@@ -966,7 +967,7 @@
     $('#aiFooterInfo').textContent = !direct
       ? 'Copy/paste makes no AI request from Circuit Studio and needs no API key.'
       : openCode
-        ? 'Your browser sends the verified token and prompt directly to OpenCode Inference, not through Circuit Studio.'
+        ? 'Your browser sends the verified token and prompt to OpenCode Inference, through a CORS proxy if one is used.'
         : 'Direct browser-to-provider connection. The selected API receives your prompt and, if entered, your key.';
   }
   function bindAiSettings() {
@@ -1045,7 +1046,12 @@
     const button = $('#verifyOpenCodeTokenButton'); button.disabled = true; button.textContent = 'Verifying…';
     setOpenCodeVerifyStatus('Contacting OpenCode Inference and loading its model list…');
     try {
-      const response = await fetch('https://opencode.ai/inference/v1/models', { headers: { Authorization: `Bearer ${token}` } });
+      const token = $('#opencodeToken').value.trim();
+      const proxy = await resolveOpenCodeProxy();
+      const send = (url) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      let response;
+      try { response = await send(proxy.url ? buildOpenCodeURL(proxy.url, 'inference/v1/models') : `${OPENCODE_ORIGIN}/inference/v1/models`); }
+      catch (error) { if (!proxy.url) throw error; response = await send(buildOpenCodeURL(proxy.url, 'inference/v1/models')); }
       if (!response.ok) throw new Error(`OpenCode returned HTTP ${response.status}.`);
       const result = await response.json();
       const models = Array.isArray(result.data) ? result.data.filter((item) => item?.id).map((item) => ({ id: String(item.id), name: String(item.name || item.id) })) : [];
@@ -1181,7 +1187,6 @@
     if (Array.isArray(content)) return content.map((part) => part.text || '').join('');
     return '';
   }
-  const OPENCODE_ORIGIN = 'https://opencode.ai';
   const OPENCODE_SYSTEM_HINT = 'The requested output must be one complete JSON object for Circuit Studio. Reply with JSON only, without commentary or markdown fences.';
   const OPENCODE_UNSUPPORTED = /^jev-/;
   const OPENCODE_FAMILY_RULES = [
@@ -1196,17 +1201,29 @@
     const rule = OPENCODE_FAMILY_RULES.find((entry) => entry.test.test(String(modelID).toLowerCase()));
     return rule ? rule.family : 'openai-chat';
   }
-  function openCodeEndpointURL(target) {
-    const proxy = $('#openCodeProxyUrl').value.trim();
-    if (!proxy) throw new Error('OpenCode generation needs a CORS proxy URL. OpenCode sends no CORS headers for generation, so a browser cannot call it from this page. Deploy the Worker in proxy/opencode-cors-worker.js and paste its URL here.');
-    const url = new URL(proxy);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Enter a plain HTTPS CORS proxy URL without credentials, query parameters, or fragments.');
+  let openCodeProxyCache = null;
+  async function resolveOpenCodeProxy() {
+    const typed = $('#openCodeProxyUrl').value.trim();
+    if (typed) return { url: typed, source: 'your' };
+    if (openCodeProxyCache) return openCodeProxyCache;
+    let resolved = { url: '', source: 'none' };
+    try {
+      const response = await fetch('proxy/config.json', { cache: 'no-store' });
+      if (response.ok) { const data = await response.json(); if (typeof data.proxyUrl === 'string' && data.proxyUrl.trim()) resolved = { url: data.proxyUrl.trim(), source: 'site' }; }
+    } catch { /* No bundled proxy: generation falls back to a direct call. */ }
+    openCodeProxyCache = resolved;
+    return resolved;
+  }
+  function buildOpenCodeURL(base, target) {
     const [path, search = ''] = target.split('?');
+    if (base === OPENCODE_ORIGIN) return `${OPENCODE_ORIGIN}/${path}${search ? `?${search}` : ''}`;
+    const url = new URL(base);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Enter a plain HTTPS CORS proxy URL without credentials, query parameters, or fragments.');
     url.pathname = `${url.pathname.replace(/\/+$/, '')}/${path}`;
     url.search = search;
     return url.toString();
   }
-  function openCodeInferenceRequest(userPrompt) {
+  async function openCodeInferenceRequest(userPrompt) {
     const token = $('#opencodeToken').value.trim();
     if (!token || token !== openCodeVerifiedToken) throw new Error('Verify your OpenCode Inference token before generating, then select a model.');
     const model = $('#openCodeModelSelect').value;
@@ -1218,25 +1235,22 @@
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Accept: 'text/event-stream' };
     const orgId = $('#opencodeOrgId').value.trim();
     if (orgId) headers['x-opencode-org-id'] = orgId;
-    if (family === 'openai-chat') return {
-      family, model, headers,
-      url: openCodeEndpointURL('inference/openai/v1/chat/completions'),
-      body: { model, stream: true, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] },
-    };
-    if (family === 'openai-responses') return {
-      family, model, headers,
-      url: openCodeEndpointURL('inference/openai/v1/responses'),
-      body: { model, stream: true, instructions: system, input: [{ role: 'user', content: [{ type: 'input_text', text: user }] }] },
-    };
-    if (family === 'anthropic') return {
-      family, model, headers: { ...headers, 'anthropic-version': '2023-06-01' },
-      url: openCodeEndpointURL('inference/anthropic/v1/messages'),
-      body: { model, stream: true, max_tokens: 16000, system, messages: [{ role: 'user', content: user }] },
-    };
+    const proxy = await resolveOpenCodeProxy();
+    const path = family === 'gemini'
+      ? `inference/google/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`
+      : ({ 'openai-chat': 'inference/openai/v1/chat/completions', 'openai-responses': 'inference/openai/v1/responses', anthropic: 'inference/anthropic/v1/messages' })[family];
+    const body = family === 'gemini'
+      ? { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }] }
+      : family === 'openai-chat'
+        ? { model, stream: true, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }
+        : family === 'openai-responses'
+          ? { model, stream: true, instructions: system, input: [{ role: 'user', content: [{ type: 'input_text', text: user }] }] }
+          : { model, stream: true, max_tokens: 16000, system, messages: [{ role: 'user', content: user }] };
+    if (family === 'anthropic') headers['anthropic-version'] = '2023-06-01';
     return {
-      family, model, headers,
-      url: openCodeEndpointURL(`inference/google/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`),
-      body: { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }] },
+      family, model, headers, body, proxy,
+      directUrl: buildOpenCodeURL(OPENCODE_ORIGIN, path),
+      proxyUrl: proxy.url ? buildOpenCodeURL(proxy.url, path) : '',
     };
   }
   function openCodeDeltaText(chunk, family) {
@@ -1272,13 +1286,37 @@
     if (text) return text;
     return [...raw.matchAll(/"text"\s*:\s*("(?:[^"\\]|\\.)*")/g)].map((match) => { try { return JSON.parse(match[1]); } catch { return ''; } }).join('');
   }
+  function openCodeErrorDetail(raw) {
+    try {
+      const data = JSON.parse(raw);
+      const error = data?.error || data;
+      const type = error?.type || data?.type || '';
+      const message = error?.message || data?.message || '';
+      if (type === 'FreeTierError' || /free tier/i.test(message)) return `${message} Pick a paid model and add credits in the OpenCode Console; free models are reserved for the OpenCode app.`;
+      return message || raw.slice(0, 300);
+    } catch { return raw.slice(0, 300); }
+  }
+  async function sendOpenCodeRequest(request) {
+    const attempt = async (url) => {
+      const response = await fetch(url, { method: 'POST', headers: request.headers, body: JSON.stringify(request.body) });
+      if (response.ok) return response;
+      const raw = await response.text();
+      return { error: `OpenCode Inference returned HTTP ${response.status}: ${openCodeErrorDetail(raw)}` };
+    };
+    if (request.proxyUrl) return attempt(request.proxyUrl);
+    try { return await attempt(request.directUrl); }
+    catch (error) {
+      if (!request.proxyUrl) throw new Error(`The browser could not read a response from OpenCode (${error.message}). OpenCode's inference endpoints send no CORS headers and return 404 to preflight requests, so a static page cannot call them directly — this is a known upstream bug (github.com/anomalyco/opencode/issues/31041). Generation needs a CORS proxy: the site can provide one, or paste your own URL in "CORS proxy URL".`);
+      throw error;
+    }
+  }
   async function generateThroughOpenCodeInference(userPrompt) {
-    const request = openCodeInferenceRequest(userPrompt);
-    setAiValidation(`Generating with OpenCode Inference · ${request.model} · ${familyLabel(request.family)}…`);
-    let response;
-    try { response = await fetch(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify(request.body) }); }
-    catch (error) { throw new Error(`Could not reach the OpenCode endpoint (${error.message}). Check the CORS proxy URL, that it is deployed, and that it allows this site. See the "Why a proxy?" note in the OpenCode panel.`); }
-    if (!response.ok) { const detail = (await response.text()).slice(0, 500); throw new Error(`OpenCode Inference returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`); }
+    const request = await openCodeInferenceRequest(userPrompt);
+    const via = request.proxyUrl ? (request.proxy.source === 'site' ? "this site's CORS proxy" : 'your CORS proxy') : 'OpenCode directly';
+    setAiValidation(`Generating with OpenCode Inference · ${request.model} · ${familyLabel(request.family)} · via ${via}…`);
+    const outcome = await sendOpenCodeRequest(request);
+    if (outcome.error) throw new Error(outcome.error);
+    const response = outcome;
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('text/event-stream') || !response.body?.getReader) {
       const raw = await response.text();
