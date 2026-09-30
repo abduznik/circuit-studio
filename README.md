@@ -26,14 +26,15 @@ The display is treated as a breakout connected by a generic 1×8 header, not as 
 - In PCB view, switch F.Cu/B.Cu, drag footprints, double-click to rotate, and click a part to inspect its footprint and pad-to-net mapping.
 - In schematic view, use `V` to select and `W` to connect symbol pins.
 - **Save project** downloads a `.circuit.json` design file; **Open** loads that format. **Export SVG** exports the active view.
-- **Build with AI** creates a provider-neutral prompt with the current pin and footprint inventory. Paste the assistant's JSON response back into the dialog to validate and load it.
+- **Build with AI** offers copy/paste prompting or direct streaming through an OpenAI-compatible endpoint / local OpenCode server. In direct mode, generated parts/nets appear in a live preview; the response is validated before loading.
+- Direct API mode sends the prompt and API key from the browser straight to the configured endpoint—not through Circuit Studio. Remembered keys are stored unencrypted in this browser and OpenAI recommends server-side key storage. OpenCode mode sends the prompt to the user's local OpenCode server instead.
 - Undo/redo: `Ctrl/⌘+Z` and `Ctrl/⌘+Shift+Z`.
 
 ## Current model
 
 Project JSON stores symbol instances, named electrical nets, pin-to-pad associations, board placements, copper-layer tracks, vias and keepouts. Footprint geometry is supplied by the current app library. The custom file is the editable source of truth; SVG export is for viewing/sharing.
 
-For AI prompt structure, import checks and coding-assistant guidance, see [AI_WORKFLOW.md](AI_WORKFLOW.md).
+For AI prompt structure, local credential behavior, API connections, import checks and coding-assistant guidance, see [AI_WORKFLOW.md](AI_WORKFLOW.md).
 
 ## Reference data
 

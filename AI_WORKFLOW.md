@@ -1,16 +1,19 @@
 # AI design workflow
 
-Circuit Studio is intentionally easy to use with a coding assistant or LLM. The app's **Build with AI** dialog creates a prompt from the user's design brief, supported component/pin inventory, footprint IDs, and—when editing—a snapshot of the open project. The AI returns a complete `.circuit.json` document that can be validated and loaded into the editor.
+Circuit Studio's **Build with AI** dialog creates a prompt from the user's design brief, supported component/pin inventory, footprint IDs, and—when editing—a snapshot of the open project. The assistant returns a complete `.circuit.json` document that can be validated and loaded into the editor.
 
 ## User flow
 
 1. Click **Build with AI** and describe the circuit, interfaces, power source, constraints, and desired board size.
 2. Choose **Create a new PCB project** or **Modify the open project**.
-3. Click **Copy design prompt** and paste it into the user's preferred AI assistant.
-4. Ask for the complete JSON response, paste it into Circuit Studio, and click **Validate & load**.
-5. Inspect the schematic and board, adjust placements/routes, run footprint/net checks, then save the `.circuit.json` project.
+3. Choose one of two methods:
+   - **Copy/paste:** copy the generated prompt to an external assistant, then paste its JSON response into Circuit Studio and choose **Validate & load**.
+   - **Direct API:** configure an OpenAI-compatible endpoint or connect to a local OpenCode server. Choose **Generate project with AI** to stream response text and progressively detected parts/nets into the live preview, validate it, and load it automatically when complete.
+4. Inspect the schematic and board, adjust placements/routes, run footprint/net checks, then save the `.circuit.json` project.
 
-The handoff is provider-neutral and works without an API key. The assistant connection remains user-controlled; the editor does not transmit design data to a model provider.
+Copy/paste works without an API key and makes no AI request from Circuit Studio. Direct API mode sends the prompt to the configured endpoint. For a direct OpenAI-compatible connection, Circuit Studio's browser sends the bearer API key to that endpoint; it never goes through a Circuit Studio backend. If **Remember key on this browser** is selected, the key is stored unencrypted in this browser's local storage and is not included in project files. Any script executing on the site origin can read browser local storage, so OpenAI recommends keeping API keys server-side. Do not use a high-privilege key in a public browser app.
+
+OpenCode mode sends the prompt to the user's OpenCode server, usually on localhost. Circuit Studio does not collect the model-provider key in this mode. OpenCode routes the prompt using its configured credentials: a local model can keep inference on-device; a cloud provider receives the prompt when selected. For GitHub Pages, allow the site's exact origin in OpenCode CORS, e.g. `opencode serve --cors https://abduznik.github.io`. A password-protected server may also require its local Basic Auth credentials in the UI.
 
 ## Project contract (version 2)
 
@@ -80,6 +83,8 @@ Use only listed footprints unless the library is extended first. If the user's e
 
 **Validate & load** checks JSON syntax, version/type support, unique references and IDs, footprint availability, pad/net assignments, board extents, copper layers, and track endpoint/net agreement. These checks catch common AI output mistakes but do not perform geometric collision detection, clearance checks, full ERC, signal-integrity analysis, or fabrication DRC. Review datasheets and inspect the board in an engineering CAD tool before manufacturing.
 
+The live API flow uses an HTTP `POST` to `/v1/chat/completions` with streaming enabled for OpenAI-compatible endpoints. It streams generated text and completed component/net records into the live preview; the full board is loaded after the JSON response passes validation. OpenCode mode uses the local server's session/message HTTP APIs and displays its response when the server finishes.
+
 ## Guidance for future contributors
 
 - Keep the project model serializable and deterministic; IDs, references, net names, and pad numbers should be stable.
@@ -87,3 +92,10 @@ Use only listed footprints unless the library is extended first. If the user's e
 - Keep prompt inventory generated from the live library instead of maintaining a second hard-coded list.
 - Extend validation alongside the schema whenever components, layers, pad properties, or routing objects are added.
 - Treat model output as an editable design proposal; never imply a generated project passed a check that is not implemented.
+
+## Provider references
+
+- [OpenAI API authentication and key handling](https://platform.openai.com/docs/api-reference/responses#authentication)
+- [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create)
+- [OpenCode HTTP server](https://dev.opencode.ai/docs/server)
+- [OpenCode providers and OpenAI-compatible endpoints](https://opencode.ai/docs/providers)

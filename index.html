@@ -115,18 +115,39 @@
         <div><p class="eyebrow">PROVIDER-NEUTRAL DESIGN COPILOT</p><h2>Build from a prompt</h2></div>
         <button class="icon-button" id="aiCloseButton" aria-label="Close AI design dialog">×</button>
       </div>
-      <p class="ai-intro">Describe the hardware, copy a project-aware prompt into your preferred AI assistant, then validate and load its Circuit Studio project response.</p>
+      <p class="ai-intro">Choose copy/paste with your preferred assistant or connect directly to an API and watch its response stream into the project.</p>
+      <label class="field-label" for="aiWorkflowMode">BUILD METHOD</label>
+      <select class="field-select ai-mode" id="aiWorkflowMode"><option value="handoff">Copy/paste with an AI assistant</option><option value="direct">Connect to an AI API · stream live</option></select>
+      <div class="ai-connection-card" id="aiConnectionCard" hidden>
+        <label class="field-label" for="aiConnectionMode">CONNECTION TYPE</label>
+        <select class="field-select ai-mode" id="aiConnectionMode"><option value="compatible">OpenAI-compatible API (OpenAI, OpenCode Zen, other providers)</option><option value="opencode">OpenCode server on this device</option></select>
+        <div class="ai-provider-panel" id="compatibleSettings">
+          <div class="ai-form-grid"><div><label class="field-label" for="aiBaseUrl">API BASE URL</label><input class="field-input" id="aiBaseUrl" type="url" value="https://api.openai.com/v1" placeholder="https://api.openai.com/v1" /></div><div><label class="field-label" for="aiModel">MODEL ID</label><input class="field-input" id="aiModel" value="gpt-4.1" placeholder="gpt-4.1" /></div></div>
+          <label class="field-label" for="aiApiKey">API KEY <span class="optional-label">(optional for local endpoints)</span></label>
+          <div class="ai-secret-row"><input class="field-input" id="aiApiKey" type="password" autocomplete="off" placeholder="Paste your provider API key" /><button class="small-action" id="toggleAiKeyButton" type="button" title="Show or hide API key">Show</button><button class="button button-quiet ai-clear-key" id="clearAiKeyButton" type="button">Clear saved key</button></div>
+          <div class="ai-storage-row"><label><input id="rememberAiKey" type="checkbox" /> Remember key on this browser</label><span id="aiKeyStorageState">Key stays in memory for this tab.</span></div>
+          <p class="ai-security-note"><strong>Direct API mode:</strong> your browser sends the prompt (including the open project in Modify mode) and API key directly to this Base URL; they do not pass through Circuit Studio. The provider receives them. OpenAI recommends keeping API keys server-side. Remembered keys are stored unencrypted in this browser's local storage, where scripts running on this site can read them. Key memory is off by default; use a limited key. <a href="https://platform.openai.com/docs/api-reference/responses#authentication" target="_blank" rel="noopener">OpenAI key guidance</a></p>
+        </div>
+        <div class="ai-provider-panel" id="opencodeSettings" hidden>
+          <div class="ai-form-grid"><div><label class="field-label" for="opencodeUrl">LOCAL OPENCODE SERVER</label><input class="field-input" id="opencodeUrl" type="url" value="http://127.0.0.1:4096" /></div><div><label class="field-label" for="opencodeProvider">PROVIDER ID</label><input class="field-input" id="opencodeProvider" value="openai" placeholder="provider id from OpenCode" /></div></div>
+          <div class="ai-form-grid"><div><label class="field-label" for="opencodeModel">MODEL ID</label><input class="field-input" id="opencodeModel" value="gpt-4.1" placeholder="model id from OpenCode" /></div><div><label class="field-label" for="opencodeUsername">SERVER USERNAME</label><input class="field-input" id="opencodeUsername" value="opencode" autocomplete="username" /></div></div>
+          <label class="field-label" for="opencodePassword">LOCAL SERVER PASSWORD <span class="optional-label">(only if configured)</span></label><input class="field-input" id="opencodePassword" type="password" autocomplete="off" placeholder="OPENCODE_SERVER_PASSWORD" />
+          <p class="ai-security-note"><strong>OpenCode local mode:</strong> Circuit Studio sends prompts to this local server, not directly to a model provider. OpenCode handles its configured credentials. If its model is cloud-hosted, OpenCode sends the prompt to that provider; with a local model, it can stay on your machine. Start with CORS allowed for this site's origin, e.g. <code>opencode serve --cors https://abduznik.github.io</code>. Your browser may also ask to allow local-network access. <a href="https://dev.opencode.ai/docs/server" target="_blank" rel="noopener">OpenCode server guide</a></p>
+        </div>
+      </div>
       <label class="field-label" for="aiMode">WORKING MODE</label>
       <select class="field-select ai-mode" id="aiMode"><option value="new">Create a new PCB project</option><option value="modify">Modify the open project</option></select>
       <label class="field-label" for="designBrief">WHAT SHOULD THE DESIGN DO?</label>
       <textarea id="designBrief" class="ai-textarea ai-brief" placeholder="Example: Add a microSD card on SPI to the ESP32 display board. Keep the ST7789 on VSPI, use a separate CS pin, add the required pull-ups/decoupling, and keep all signals at 3.3 V."></textarea>
-      <div class="ai-step-row"><div><b>1</b><span>Describe the board</span></div><div><b>2</b><span>Copy the prompt to an AI assistant</span></div><div><b>3</b><span>Paste its JSON response here</span></div></div>
-      <button class="button button-ai-copy" id="copyAiPromptButton">Copy design prompt <span aria-hidden="true">⧉</span></button>
-      <details class="ai-prompt-preview"><summary>Review or copy the prompt manually</summary><textarea id="aiPromptPreview" class="ai-textarea ai-response" readonly placeholder="Your project-aware prompt will appear here after you click Copy design prompt."></textarea></details>
-      <label class="field-label" for="aiProjectResponse">AI-GENERATED CIRCUIT STUDIO JSON</label>
+      <div class="ai-step-row" id="aiHandoffControls"><div><b>1</b><span>Describe the board</span></div><div><b>2</b><span>Copy the prompt to an AI assistant</span></div><div><b>3</b><span>Paste its JSON response here</span></div></div>
+      <div id="aiHandoffPromptControls"><button class="button button-ai-copy" id="copyAiPromptButton">Copy design prompt <span aria-hidden="true">⧉</span></button>
+      <details class="ai-prompt-preview"><summary>Review or copy the prompt manually</summary><textarea id="aiPromptPreview" class="ai-textarea ai-response" readonly placeholder="Your project-aware prompt will appear here after you click Copy design prompt."></textarea></details></div>
+      <div class="ai-generate-row" id="aiGenerateRow" hidden><button class="button button-primary" id="generateAiProjectButton" type="button">Generate project with AI</button><span>Response streams into the live preview; the validated design loads into the editor when complete.</span></div>
+      <div class="ai-live-preview" id="aiLivePreview" hidden><div class="ai-live-header"><strong>LIVE DESIGN BUILD</strong><span id="aiLiveSummary">Waiting for generated components…</span></div><div class="ai-live-parts" id="aiLiveParts"><span class="ai-live-empty">New part records will appear here while the model streams.</span></div></div>
+      <label class="field-label" id="aiResponseLabel" for="aiProjectResponse">AI-GENERATED CIRCUIT STUDIO JSON</label>
       <textarea id="aiProjectResponse" class="ai-textarea ai-response" spellcheck="false" placeholder="Paste the complete .circuit.json response here…"></textarea>
       <div class="ai-validation" id="aiValidation" role="status" aria-live="polite">The validator checks part types, footprints, pad-to-net references, board dimensions and routed-net endpoints.</div>
-      <div class="ai-dialog-footer"><span>No AI provider or API key is required by this handoff.</span><button class="button button-primary" id="validateAiProjectButton">Validate &amp; load</button></div>
+      <div class="ai-dialog-footer"><span id="aiFooterInfo">Copy/paste mode needs no API key. Direct mode uses your configured endpoint.</span><button class="button button-primary" id="validateAiProjectButton">Validate &amp; load</button></div>
     </dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="app.js"></script>

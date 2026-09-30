@@ -64,6 +64,9 @@
   let undoStack = [];
   let redoStack = [];
   let toastTimer;
+  let aiGenerating = false;
+  const AI_SETTINGS_KEY = 'circuit-studio.ai-settings.v1';
+  const AI_KEY_STORAGE_KEY = 'circuit-studio.ai-key.v1';
 
   const $ = (selector) => document.querySelector(selector);
   const svg = $('#schematic');
@@ -843,14 +846,23 @@
     };
     const mode = $('#aiMode').value;
     const existing = mode === 'modify' ? `\nCURRENT PROJECT JSON (modify this design and return the complete replacement project):\n${JSON.stringify(project, null, 2)}\n` : '';
-    return `You are the electronics design copilot for Circuit Studio, a browser-based schematic and PCB editor. Create a practical PCB project from the design brief below.\n\nOUTPUT CONTRACT\n- Return exactly one valid JSON object. Do not include Markdown fences, prose, or comments.\n- Use format "circuit-studio", version 2, units "mm". Follow this shape; preserve all required fields:\n${JSON.stringify(schemaExample, null, 2)}\n- Use only these supported component types and exact footprint IDs. Do not invent symbols, pads, footprint names, datasheet facts, or GPIO capabilities:\n${JSON.stringify(supportedParts, null, 2)}\n- For every net endpoint, use a real pad number from the selected component definition. Pad numbers are strings.\n- Every component needs a unique id and reference, a supported footprint, schematic {x,y,rotation}, and PCB {x,y,rotation}. Keep the full part inside the board.\n- Each physical pad may belong to only one net. Put each named net in nets[].endpoints. Set wires to [] so the editor derives the schematic connections from the netlist.\n- Every track endpoint must be assigned to that exact same named net. Use only enabled copper layers. Use straight/orthogonal waypoints, sensible trace widths, and vias when changing layers. Stay inside the outline and outside keepouts.\n- Add decoupling, pull-ups, series resistors, connectors, and power details that the requested circuit actually needs. Do not leave critical power/reset requirements implicit.\n- Keep analog/radio/high-speed and antenna constraints in mind. In particular, do not use ESP32 GPIO6–GPIO11 as normal GPIO; they are reserved for module flash.\n- Put assumptions, exact-part uncertainties, supply requirements, and omissions in assumptions[]. Never claim DRC/manufacturing approval.\n- Schematic positions use a 1200×700 coordinate space; PCB positions and waypoints use millimetres. Allowed rotations: 0, 90, 180, 270.\n\nDESIGN BRIEF\n${brief}\n${existing}`;
+    return `OUTPUT CONTRACT\n- Return exactly one valid JSON object. Do not include Markdown fences, prose, or comments.\n- Use format "circuit-studio", version 2, units "mm". Follow this shape; preserve all required fields:\n${JSON.stringify(schemaExample, null, 2)}\n- Use only these supported component types and exact footprint IDs. Do not invent symbols, pads, footprint names, datasheet facts, or GPIO capabilities:\n${JSON.stringify(supportedParts, null, 2)}\n- For every net endpoint, use a real pad number from the selected component definition. Pad numbers are strings.\n- Every component needs a unique id and reference, a supported footprint, schematic {x,y,rotation}, and PCB {x,y,rotation}. Keep the full part inside the board.\n- Each physical pad may belong to only one net. Put each named net in nets[].endpoints. Set wires to [] so the editor derives the schematic connections from the netlist.\n- Every track endpoint must be assigned to that exact same named net. Use only enabled copper layers. Use straight/orthogonal waypoints, sensible trace widths, and vias when changing layers. Stay inside the outline and outside keepouts.\n- Add decoupling, pull-ups, series resistors, connectors, and power details that the requested circuit actually needs. Do not leave critical power/reset requirements implicit.\n- Keep analog/radio/high-speed and antenna constraints in mind. In particular, do not use ESP32 GPIO6–GPIO11 as normal GPIO; they are reserved for module flash.\n- Put assumptions, exact-part uncertainties, supply requirements, and omissions in assumptions[]. Never claim DRC/manufacturing approval.\n- Schematic positions use a 1200×700 coordinate space; PCB positions and waypoints use millimetres. Allowed rotations: 0, 90, 180, 270.\n\nDESIGN BRIEF\n${brief}\n${existing}`;
+  }
+
+  function buildAiSystemPrompt() {
+    return `You are Circuit Studio's electronics design copilot. Circuit Studio is a static browser app for PCB/electronics design. Its UI has a schematic view, a PCB layout view with F.Cu/B.Cu selection, a properties/pad-to-net inspector, project JSON Open/Save, and electrical/footprint consistency checks. Users can either import a .circuit.json file or paste a design response into Build with AI. A version-2 project contains components with separate schematic and PCB placements, named nets with physical pad endpoints, and board copper tracks/vias/keepouts. On load, the app builds named schematic connections from nets[].endpoints and draws physical footprints and routed layers from the board model. The prompt provided by the user explains the exact schema, coordinate spaces, supported part/pad/footprint inventory, and their design request.\n\nGenerate a complete, internally consistent Circuit Studio project object. Use only the exact supported part, pad, and footprint inventory in the user prompt. Model physical pad-to-net assignments correctly, include all power/reset/decoupling details, and route copper using straight track segments. Record all assumptions and any unknown exact parts. Do not use tools, edit files, claim DRC approval, or return anything except the single JSON object.`;
+  }
+
+  function buildHandoffPrompt() {
+    const request = buildAiPrompt();
+    return request ? `SYSTEM PROMPT FOR YOUR AI ASSISTANT\n${buildAiSystemPrompt()}\n\nUSER REQUEST AND LIVE PROJECT SCHEMA\n${request}` : null;
   }
 
   function setAiValidation(message, state = '') {
     const status = $('#aiValidation'); status.textContent = message; status.classList.toggle('error', state === 'error'); status.classList.toggle('success', state === 'success');
   }
   async function copyAiPrompt() {
-    const prompt = buildAiPrompt(); if (!prompt) return;
+    const prompt = buildHandoffPrompt(); if (!prompt) return;
     const preview = $('#aiPromptPreview'); preview.value = prompt;
     try {
       let copied = false;
@@ -861,6 +873,234 @@
         showToast('Design prompt copied');
       } else setAiValidation('Prompt ready below. Expand “Review or copy the prompt manually”, select the text, and copy it into your preferred AI assistant.', 'success');
     } catch (error) { setAiValidation(`${error.message}. Select and copy the prompt manually from your assistant workflow.`, 'error'); }
+  }
+  function loadAiSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(AI_SETTINGS_KEY) || '{}');
+      if (saved.workflowMode) $('#aiWorkflowMode').value = saved.workflowMode;
+      if (saved.connectionMode) $('#aiConnectionMode').value = saved.connectionMode;
+      if (saved.baseUrl) $('#aiBaseUrl').value = saved.baseUrl;
+      if (saved.model) $('#aiModel').value = saved.model;
+      if (saved.opencodeUrl) $('#opencodeUrl').value = saved.opencodeUrl;
+      if (saved.opencodeProvider) $('#opencodeProvider').value = saved.opencodeProvider;
+      if (saved.opencodeModel) $('#opencodeModel').value = saved.opencodeModel;
+      if (saved.opencodeUsername) $('#opencodeUsername').value = saved.opencodeUsername;
+      const rememberedKey = localStorage.getItem(AI_KEY_STORAGE_KEY);
+      if (rememberedKey) { $('#aiApiKey').value = rememberedKey; $('#rememberAiKey').checked = true; }
+    } catch { /* Local-file/private browsing modes may block localStorage; settings remain available for this tab. */ }
+    updateAiWorkflowUi(); updateAiConnectionUi(); updateAiKeyStorageState();
+  }
+  function saveAiSettings() {
+    const settings = {
+      workflowMode: $('#aiWorkflowMode').value,
+      connectionMode: $('#aiConnectionMode').value,
+      baseUrl: $('#aiBaseUrl').value.trim(),
+      model: $('#aiModel').value.trim(),
+      opencodeUrl: $('#opencodeUrl').value.trim(),
+      opencodeProvider: $('#opencodeProvider').value.trim(),
+      opencodeModel: $('#opencodeModel').value.trim(),
+      opencodeUsername: $('#opencodeUsername').value.trim(),
+    };
+    try { localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(settings)); } catch { /* The current form values still work for this tab. */ }
+    persistAiKeyPreference();
+  }
+  function persistAiKeyPreference() {
+    const remember = $('#rememberAiKey').checked;
+    const key = $('#aiApiKey').value.trim();
+    try {
+      if (remember && key) localStorage.setItem(AI_KEY_STORAGE_KEY, key);
+      else localStorage.removeItem(AI_KEY_STORAGE_KEY);
+    } catch { /* If storage is unavailable, the key remains only in this page's input. */ }
+    updateAiKeyStorageState();
+  }
+  function updateAiKeyStorageState() {
+    const status = $('#aiKeyStorageState');
+    status.textContent = $('#rememberAiKey').checked && $('#aiApiKey').value ? 'Saved in this browser only; never added to project files.' : $('#rememberAiKey').checked ? 'The key will be saved here after you enter it.' : 'Key stays in memory for this tab.';
+  }
+  function updateAiWorkflowUi() {
+    const direct = $('#aiWorkflowMode').value === 'direct';
+    $('#aiConnectionCard').hidden = !direct;
+    $('#aiHandoffControls').hidden = direct;
+    $('#aiHandoffPromptControls').hidden = direct;
+    $('#aiGenerateRow').hidden = !direct;
+    $('#aiLivePreview').hidden = !direct;
+    $('#aiResponseLabel').textContent = direct ? 'LIVE AI RESPONSE · CIRCUIT STUDIO JSON' : 'AI-GENERATED CIRCUIT STUDIO JSON';
+    $('#aiProjectResponse').placeholder = direct ? 'The generated project will stream into this editor while the request runs…' : 'Paste the complete .circuit.json response here…';
+    $('#validateAiProjectButton').textContent = direct ? 'Validate pasted response' : 'Validate & load';
+    updateAiConnectionUi();
+    updateAiFooterInfo();
+  }
+  function updateAiConnectionUi() {
+    const openCode = $('#aiConnectionMode').value === 'opencode';
+    $('#compatibleSettings').hidden = openCode;
+    $('#opencodeSettings').hidden = !openCode;
+    $('#aiGenerateRow').querySelector('span').textContent = openCode
+      ? 'OpenCode returns its answer when complete; the live preview fills in, then the validated design loads.'
+      : 'Response text and detected parts/nets stream live; the validated design loads when complete.';
+    updateAiFooterInfo();
+  }
+  function updateAiFooterInfo() {
+    const direct = $('#aiWorkflowMode').value === 'direct';
+    const local = $('#aiConnectionMode').value === 'opencode';
+    $('#aiFooterInfo').textContent = !direct
+      ? 'Copy/paste makes no AI request from Circuit Studio and needs no API key.'
+      : local
+        ? 'Direct browser-to-local OpenCode connection. OpenCode routes to its configured model/provider.'
+        : 'Direct browser-to-provider connection. The selected API receives your prompt and, if entered, your key.';
+  }
+  function bindAiSettings() {
+    loadAiSettings();
+    $('#aiWorkflowMode').addEventListener('change', () => { updateAiWorkflowUi(); saveAiSettings(); });
+    $('#aiConnectionMode').addEventListener('change', () => { updateAiConnectionUi(); saveAiSettings(); });
+    ['aiBaseUrl', 'aiModel', 'opencodeUrl', 'opencodeProvider', 'opencodeModel', 'opencodeUsername'].forEach((id) => $(`#${id}`).addEventListener('change', saveAiSettings));
+    $('#rememberAiKey').addEventListener('change', () => { persistAiKeyPreference(); saveAiSettings(); });
+    $('#aiApiKey').addEventListener('change', persistAiKeyPreference);
+    $('#aiApiKey').addEventListener('input', () => { if ($('#rememberAiKey').checked) persistAiKeyPreference(); });
+    $('#clearAiKeyButton').addEventListener('click', () => { $('#aiApiKey').value = ''; $('#rememberAiKey').checked = false; persistAiKeyPreference(); saveAiSettings(); });
+    $('#toggleAiKeyButton').addEventListener('click', () => {
+      const input = $('#aiApiKey'); const reveal = input.type === 'password'; input.type = reveal ? 'text' : 'password'; $('#toggleAiKeyButton').textContent = reveal ? 'Hide' : 'Show';
+    });
+    $('#generateAiProjectButton').addEventListener('click', generateAiProject);
+  }
+  function baseApiUrl(raw, suffix) {
+    const url = new URL(raw.trim());
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Enter an HTTP(S) API base URL without embedded credentials, query parameters, or fragments.');
+    const localHost = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (url.protocol !== 'https:' && !localHost) throw new Error('Use HTTPS for remote API endpoints; plain HTTP is limited to localhost.');
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}${suffix}`;
+    return url.toString();
+  }
+  async function generateAiProject() {
+    if (aiGenerating) return;
+    const userPrompt = buildAiPrompt(); if (!userPrompt) return;
+    const button = $('#generateAiProjectButton'); aiGenerating = true; button.disabled = true; button.textContent = 'Generating…';
+    $('#aiProjectResponse').value = '';
+    updateAiLivePreview('');
+    setAiValidation($('#aiConnectionMode').value === 'opencode' ? 'Connecting to your local OpenCode server…' : 'Connecting directly to the configured API…');
+    try {
+      const output = $('#aiConnectionMode').value === 'opencode'
+        ? await generateThroughOpenCode(userPrompt)
+        : await generateThroughCompatibleApi(userPrompt);
+      $('#aiProjectResponse').value = output;
+      $('#aiProjectResponse').dispatchEvent(new Event('input', { bubbles: true }));
+      setAiValidation('Response complete. Validating parts, footprints, nets, and routing…', 'success');
+      validateAndLoadAiProject();
+    } catch (error) {
+      setAiValidation(`${error.message}\n\nNo project was loaded. Check the endpoint, model, credentials, and browser CORS permission, then retry.`, 'error');
+    } finally { aiGenerating = false; button.disabled = false; button.textContent = 'Generate project with AI'; }
+  }
+  function updateAiStream(text) {
+    $('#aiProjectResponse').value = text;
+    $('#aiProjectResponse').scrollTop = $('#aiProjectResponse').scrollHeight;
+    const { components, nets } = updateAiLivePreview(text);
+    setAiValidation(`Receiving AI response… ${text.length.toLocaleString()} characters · ${components} parts · ${nets} nets detected.`);
+  }
+  function extractCompleteJsonArrayObjects(source, property) {
+    const marker = new RegExp(`"${property}"\\s*:\\s*\\[`).exec(source);
+    if (!marker) return [];
+    const startIndex = marker.index + marker[0].length;
+    const result = []; let objectStart = -1, depth = 0, inString = false, escaped = false;
+    for (let index = startIndex; index < source.length; index++) {
+      const char = source[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === '"') inString = false;
+        continue;
+      }
+      if (char === '"') { inString = true; continue; }
+      if (char === '{') { if (depth === 0) objectStart = index; depth++; continue; }
+      if (char === '}') {
+        depth--;
+        if (depth === 0 && objectStart >= 0) {
+          try { result.push(JSON.parse(source.slice(objectStart, index + 1))); } catch {}
+          objectStart = -1;
+        }
+        continue;
+      }
+      if (char === ']' && depth === 0) break;
+    }
+    return result;
+  }
+  function updateAiLivePreview(source) {
+    const components = extractCompleteJsonArrayObjects(source, 'components');
+    const nets = extractCompleteJsonArrayObjects(source, 'nets');
+    $('#aiLiveSummary').textContent = source ? `${components.length} part${components.length === 1 ? '' : 's'} · ${nets.length} net${nets.length === 1 ? '' : 's'} received` : 'Waiting for generated components…';
+    const list = $('#aiLiveParts');
+    if (!components.length) list.innerHTML = '<span class="ai-live-empty">New part records will appear here while the model streams.</span>';
+    else {
+      const cards = components.map((component) => `<div class="ai-live-part"><b>${esc(component.ref || component.id || 'Part')}</b><span>${esc(component.value || component.type || 'Component')}</span><small>${esc(component.footprint || component.type || '')}</small></div>`).join('');
+      const netChips = nets.map((net) => `<span class="ai-live-net">${esc(net.name || 'unnamed net')}</span>`).join('');
+      list.innerHTML = `${cards}${netChips}`;
+    }
+    return { components: components.length, nets: nets.length };
+  }
+  async function generateThroughCompatibleApi(userPrompt) {
+    const endpoint = baseApiUrl($('#aiBaseUrl').value, '/chat/completions');
+    const model = $('#aiModel').value.trim();
+    if (!model) throw new Error('Enter a model ID for the selected API.');
+    const key = $('#aiApiKey').value.trim();
+    const headers = { 'Content-Type': 'application/json' };
+    if (key) headers.Authorization = `Bearer ${key}`;
+    const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ model, stream: true, messages: [{ role: 'system', content: buildAiSystemPrompt() }, { role: 'user', content: userPrompt }] }) });
+    if (!response.ok) { const detail = (await response.text()).slice(0, 500); throw new Error(`Provider returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`); }
+    if (!(response.headers.get('content-type') || '').includes('text/event-stream') || !response.body?.getReader) {
+      const result = await response.json(); const text = compatibleResponseText(result);
+      if (!text) throw new Error('The API response did not contain assistant text.');
+      updateAiStream(text); return text;
+    }
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let output = ''; let finished = false;
+    const consumeEvent = (event) => {
+      const data = event.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
+      if (!data || data === '[DONE]') { if (data === '[DONE]') finished = true; return; }
+      let chunk; try { chunk = JSON.parse(data); } catch { return; }
+      const delta = chunk.choices?.[0]?.delta?.content;
+      if (typeof delta === 'string') { output += delta; updateAiStream(output); }
+      else if (Array.isArray(delta)) { const text = delta.map((part) => part.text || '').join(''); output += text; if (text) updateAiStream(output); }
+    };
+    while (!finished) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }); buffer = buffer.replace(/\r\n/g, '\n');
+      let boundary;
+      while ((boundary = buffer.indexOf('\n\n')) >= 0) { consumeEvent(buffer.slice(0, boundary)); buffer = buffer.slice(boundary + 2); if (finished) break; }
+    }
+    buffer += decoder.decode(); if (buffer.trim()) consumeEvent(buffer);
+    if (!output.trim()) throw new Error('The API stream ended without generated text.');
+    return output;
+  }
+  function compatibleResponseText(result) {
+    const content = result?.choices?.[0]?.message?.content;
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) return content.map((part) => part.text || '').join('');
+    return '';
+  }
+  function openCodeAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    const password = $('#opencodePassword').value;
+    if (password) headers.Authorization = `Basic ${btoa(unescape(encodeURIComponent(`${$('#opencodeUsername').value || 'opencode'}:${password}`)))}`;
+    return headers;
+  }
+  async function generateThroughOpenCode(userPrompt) {
+    const url = new URL($('#opencodeUrl').value.trim());
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Enter a valid OpenCode server URL without embedded credentials or query parameters.');
+    const localHost = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (url.protocol !== 'https:' && !localHost) throw new Error('Use HTTPS for remote OpenCode servers; plain HTTP is limited to localhost.');
+    const base = `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+    const providerID = $('#opencodeProvider').value.trim(), modelID = $('#opencodeModel').value.trim();
+    if (!base || !providerID || !modelID) throw new Error('Enter the OpenCode server URL, provider ID, and model ID.');
+    setAiValidation('Creating a local OpenCode session…');
+    const headers = openCodeAuthHeaders();
+    const sessionResponse = await fetch(`${base}/session`, { method: 'POST', headers, body: JSON.stringify({ title: `Circuit Studio: ${project.name || 'PCB design'}` }) });
+    if (!sessionResponse.ok) throw new Error(`OpenCode session request failed (${sessionResponse.status}).`);
+    const session = await sessionResponse.json(); if (!session.id) throw new Error('OpenCode did not return a session ID.');
+    setAiValidation('Sending the design brief to your local OpenCode server…');
+    const response = await fetch(`${base}/session/${encodeURIComponent(session.id)}/message`, { method: 'POST', headers, body: JSON.stringify({ model: { providerID, modelID }, system: buildAiSystemPrompt(), tools: {}, parts: [{ type: 'text', text: userPrompt }] }) });
+    if (!response.ok) { const detail = (await response.text()).slice(0, 400); throw new Error(`OpenCode returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`); }
+    const result = await response.json();
+    const text = (result.parts || []).filter((part) => part.type === 'text').map((part) => part.text || '').join('\n');
+    if (!text) throw new Error('OpenCode returned no assistant text.');
+    updateAiStream(text); return text;
   }
   function validateAndLoadAiProject() {
     const source = $('#aiProjectResponse').value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -899,6 +1139,7 @@
   document.querySelectorAll('.inspector-tab').forEach((tab) => tab.addEventListener('click', () => { inspectorTab = tab.dataset.inspector; document.querySelectorAll('.inspector-tab').forEach((item) => item.classList.toggle('active', item === tab)); renderInspector(); }));
   document.querySelectorAll('.tab[data-view]').forEach((tab) => tab.addEventListener('click', () => setView(tab.dataset.view)));
   document.querySelectorAll('.board-layer-toggle button').forEach((button) => button.addEventListener('click', () => { activeCopperLayer = button.dataset.layer; document.querySelectorAll('.board-layer-toggle button').forEach((item) => item.classList.toggle('active', item === button)); renderBoard(); updateView(); }));
+  bindAiSettings();
   document.addEventListener('keydown', (event) => {
     if (event.target.matches('input,textarea,select')) return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); restoreHistory(event.shiftKey ? redoStack : undoStack, event.shiftKey ? undoStack : redoStack); return; }
