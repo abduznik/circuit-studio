@@ -33,3 +33,8 @@ test('every element id the AI panel looks up exists in index.html', () => {
     assert.deepEqual(missing, [], `${file} references ids that are not in index.html`);
   }
 });
+
+test('the validator rules the self-check mentions still exist in app.js (keep them in sync)', () => {
+  const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  for (const fragment of ['a net needs at least two', 'assigned to multiple nets', 'is not declared', 'waypoint lies outside the board', 'is not enabled on the board']) assert.ok(app.includes(fragment), fragment);
+});

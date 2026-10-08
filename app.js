@@ -792,7 +792,7 @@
       if (!net || typeof net !== 'object') { issue('Every net must be an object.'); return; }
       if (!net.name || netNames.has(net.name)) issue(`Net name "${net.name || '(empty)'}" is missing or duplicated.`);
       netNames.add(net.name);
-      if (!Array.isArray(net.endpoints) || net.endpoints.length < 2) issue(`Net ${net.name}: add at least two pad endpoints.`);
+      if (!Array.isArray(net.endpoints) || net.endpoints.length < 2) issue(`Net ${net.name}: has ${Array.isArray(net.endpoints) ? net.endpoints.length : 0} pad endpoint(s); a net needs at least two, so add the other pad it connects to or remove the net.`);
       (net.endpoints || []).forEach((endpoint) => {
         if (!endpoint || typeof endpoint !== 'object' || endpoint.componentId === undefined || endpoint.pad === undefined) { issue(`Net ${net.name}: endpoint needs componentId and pad.`); return; }
         const component = componentsById.get(endpoint.componentId);

@@ -145,3 +145,16 @@ test('a 400 that blames the reasoning parameter is retried without it; other err
   assert.ok(!core.shouldRetryWithoutThinking(401, 'unsupported_parameter'));
   assert.ok(!core.shouldRetryWithoutThinking(402, 'reasoning'));
 });
+
+test('repair request lists every problem and carries the previous response', () => {
+  const text = core.buildRepairRequest(['Net LOAD_OUT: has 1 pad endpoint(s)', 'Component U9: bad footprint'], '{"nets":[]}');
+  assert.match(text, /- Net LOAD_OUT: has 1 pad endpoint/);
+  assert.match(text, /- Component U9: bad footprint/);
+  assert.match(text, /at least two pad endpoints/);
+  assert.ok(text.endsWith('{"nets":[]}'));
+});
+
+test('self-check checklist covers every rule the validator enforces', () => {
+  const rules = [/at least TWO endpoints/, /unique id, unique ref/, /footprint from the supported list/, /No pad may appear in more than one net/, /SAME net/, /waypoint inside the board/, /F\.Cu/, /complete corrected JSON/];
+  for (const rule of rules) assert.match(core.AI_SELF_CHECK, rule);
+});

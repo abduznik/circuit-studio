@@ -151,3 +151,9 @@ The **OpenCode plan** selector switches between the Inference API (`/inference/.
 ### Thinking on OpenCode Go
 
 Reasoning models can spend minutes thinking before the first answer token (`mimo-v2.6-flash` produced 88k characters of reasoning and no answer in 570 s on the full board prompt). The **Thinking** setting (default **Off**) sends `reasoning_effort: "none"` on Go chat models: every Go model tested accepted it, and the same `mimo-v2.6-flash` board then took about 23 s. The `thinking: {"type":"disabled"}` object is not used because `glm-5.3-flash` and `omen-alpha` reject it with a 400 and `kimi-k3`/`hy3` ignore it. If a model does reject the parameter, the request is retried once without it. The Anthropic Messages and OpenAI Responses families keep the model default.
+
+## Self-check and self-repair
+
+The design prompt includes a SELF-CHECK checklist (`AI_SELF_CHECK` in `opencode-core.js`) that mirrors what `validateGeneratedProject` in `app.js` enforces: unique ids/refs, supported parts and footprints, nets with at least two endpoints, one net per pad, tracks matching their pad nets, waypoints inside the board. Keep the checklist and the validator in sync (a test guards the key phrases).
+
+In direct mode the app also repairs automatically: if the response fails validation it re-asks the model with the full problem list and the previous JSON, up to 2 times (3 attempts total), showing "Self-check 1/2: …" while it does. If it still fails, the problems stay on screen and the **Fix with AI** button retries once more; in copy/paste mode that button copies a repair prompt for your assistant instead.

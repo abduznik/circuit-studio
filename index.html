@@ -157,7 +157,7 @@
       <label class="field-label" id="aiResponseLabel" for="aiProjectResponse">AI-GENERATED CIRCUIT STUDIO JSON</label>
       <textarea id="aiProjectResponse" class="ai-textarea ai-response" spellcheck="false" placeholder="Paste the complete .circuit.json response here…"></textarea>
       <div class="ai-validation" id="aiValidation" role="status" aria-live="polite">The validator checks part types, footprints, pad-to-net references, board dimensions and routed-net endpoints.</div>
-      <div class="ai-dialog-footer"><span id="aiFooterInfo">Copy/paste mode needs no API key. Direct mode uses your configured endpoint.</span><button class="button button-primary" id="validateAiProjectButton">Validate &amp; load</button></div>
+      <div class="ai-dialog-footer"><span id="aiFooterInfo">Copy/paste mode needs no API key. Direct mode uses your configured endpoint.</span><button class="button button-ai-copy" id="repairAiButton" type="button" hidden title="Send the validation problems and the previous answer back to the AI">Fix with AI</button><button class="button button-primary" id="validateAiProjectButton">Validate &amp; load</button></div>
     </dialog>
     <aside class="ai-review-notice" id="aiReviewNotice" role="region" aria-label="AI-generated design review" hidden><div class="ai-review-head"><strong>AI-generated design: needs review</strong><button class="icon-button mini" id="aiReviewDismiss" type="button" aria-label="Dismiss notice">×</button></div><p id="aiReviewSummary"></p><div id="aiReviewBody"></div></aside>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>

@@ -13,7 +13,7 @@
   const AI_SETTINGS_KEY = 'circuit-studio.ai-settings.v1';
   const AI_KEY_STORAGE_KEY = 'circuit-studio.ai-key.v1';
   const AI_OPENCODE_TOKEN_KEY = 'circuit-studio.opencode-token.v1';
-  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, openCodeThinkingParams, shouldRetryWithoutThinking, buildOpenCodeURL, openCodeDeltaText, openCodeReasoningText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel, familyMismatchHint, readSseStream } = window.CircuitOpenCode;
+  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, AI_SELF_CHECK, buildRepairRequest, openCodeThinkingParams, shouldRetryWithoutThinking, buildOpenCodeURL, openCodeDeltaText, openCodeReasoningText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel, familyMismatchHint, readSseStream } = window.CircuitOpenCode;
   function buildAiPrompt() {
     const brief = $('#designBrief').value.trim();
     if (!brief) { setAiValidation('Describe the circuit or PCB you want first.', 'error'); return null; }
@@ -33,7 +33,7 @@
     };
     const mode = $('#aiMode').value;
     const existing = mode === 'modify' ? `\nCURRENT PROJECT JSON (modify this design and return the complete replacement project):\n${JSON.stringify(host.getProject(), null, 2)}\n` : '';
-    return `OUTPUT CONTRACT\n- Return exactly one valid JSON object. Do not include Markdown fences, prose, or comments.\n- Use format "circuit-studio", version 2, units "mm". Follow this shape; preserve all required fields:\n${JSON.stringify(schemaExample, null, 2)}\n- Use only these supported component types and exact footprint IDs. Do not invent symbols, pads, footprint names, datasheet facts, or GPIO capabilities:\n${JSON.stringify(supportedParts, null, 2)}\n- For every net endpoint, use a real pad number from the selected component definition. Pad numbers are strings.\n- Every component needs a unique id and reference, a supported footprint, schematic {x,y,rotation}, and PCB {x,y,rotation}. Keep the full part inside the board.\n- Each physical pad may belong to only one net. Put each named net in nets[].endpoints. Set wires to [] so the editor derives the schematic connections from the netlist.\n- Every track endpoint must be assigned to that exact same named net. Use only enabled copper layers. Use straight/orthogonal waypoints, sensible trace widths, and vias when changing layers. Stay inside the outline and outside keepouts.\n- Add decoupling, pull-ups, series resistors, connectors, and power details that the requested circuit actually needs. Do not leave critical power/reset requirements implicit.\n- Keep analog/radio/high-speed and antenna constraints in mind. In particular, do not use ESP32 GPIO6–GPIO11 as normal GPIO; they are reserved for module flash.\n- Put assumptions, exact-part uncertainties, supply requirements, and omissions in assumptions[]. Never claim DRC/manufacturing approval.\n- Schematic positions use a 1200×700 coordinate space; PCB positions and waypoints use millimetres. Allowed rotations: 0, 90, 180, 270.\n\nDESIGN BRIEF\n${brief}\n${existing}`;
+    return `OUTPUT CONTRACT\n- Return exactly one valid JSON object. Do not include Markdown fences, prose, or comments.\n- Use format "circuit-studio", version 2, units "mm". Follow this shape; preserve all required fields:\n${JSON.stringify(schemaExample, null, 2)}\n- Use only these supported component types and exact footprint IDs. Do not invent symbols, pads, footprint names, datasheet facts, or GPIO capabilities:\n${JSON.stringify(supportedParts, null, 2)}\n- For every net endpoint, use a real pad number from the selected component definition. Pad numbers are strings.\n- Every component needs a unique id and reference, a supported footprint, schematic {x,y,rotation}, and PCB {x,y,rotation}. Keep the full part inside the board.\n- Each physical pad may belong to only one net. Put each named net in nets[].endpoints. Every net MUST have at least two pad endpoints: never emit a net with a single pad (leave it out, or add the pad it connects to). Set wires to [] so the editor derives the schematic connections from the netlist.\n- Every track endpoint must be assigned to that exact same named net. Use only enabled copper layers. Use straight/orthogonal waypoints, sensible trace widths, and vias when changing layers. Stay inside the outline and outside keepouts.\n- Add decoupling, pull-ups, series resistors, connectors, and power details that the requested circuit actually needs. Do not leave critical power/reset requirements implicit.\n- Keep analog/radio/high-speed and antenna constraints in mind. In particular, do not use ESP32 GPIO6–GPIO11 as normal GPIO; they are reserved for module flash.\n- Put assumptions, exact-part uncertainties, supply requirements, and omissions in assumptions[]. Never claim DRC/manufacturing approval.\n- Schematic positions use a 1200×700 coordinate space; PCB positions and waypoints use millimetres. Allowed rotations: 0, 90, 180, 270.\n\n${AI_SELF_CHECK}\n\nDESIGN BRIEF\n${brief}\n${existing}`;
   }
 
   function buildAiSystemPrompt() {
@@ -181,7 +181,7 @@
       const input = $('#opencodeToken'); const reveal = input.type === 'password'; input.type = reveal ? 'text' : 'password'; $('#toggleOpenCodeTokenButton').textContent = reveal ? 'Hide' : 'Show';
     });
     $('#verifyOpenCodeTokenButton').addEventListener('click', verifyOpenCodeToken);
-    $('#generateAiProjectButton').addEventListener('click', generateAiProject);
+    $('#generateAiProjectButton').addEventListener('click', generateWithSelfRepair);
   }
   function invalidateOpenCodeVerification() {
     openCodeVerifiedToken = ''; verifiedOpenCodeModels = [];
@@ -272,14 +272,14 @@
     url.pathname = `${url.pathname.replace(/\/+$/, '')}${suffix}`;
     return url.toString();
   }
-  async function generateAiProject() {
-    if (aiGenerating) return;
-    const userPrompt = buildAiPrompt(); if (!userPrompt) return;
+  async function generateAiProject(promptOverride, note = '') {
+    if (aiGenerating) return 'busy';
+    const userPrompt = typeof promptOverride === 'string' ? promptOverride : buildAiPrompt(); if (!userPrompt) return 'error';
     const button = $('#generateAiProjectButton'); aiGenerating = true; button.disabled = true; button.textContent = 'Generating…';
     $('#aiProjectResponse').value = '';
     updateAiLivePreview('');
     const openCode = $('#aiConnectionMode').value === 'opencode-inference';
-    setAiValidation(openCode ? 'Sending the design brief to OpenCode Inference…' : 'Connecting directly to the configured API…');
+    setAiValidation(`${note}${openCode ? 'Sending the design brief to OpenCode Inference…' : 'Connecting directly to the configured API…'}`);
     try {
       const output = openCode
         ? await generateThroughOpenCodeInference(userPrompt)
@@ -287,10 +287,28 @@
       $('#aiProjectResponse').value = output;
       $('#aiProjectResponse').dispatchEvent(new Event('input', { bubbles: true }));
       setAiValidation('Response complete. Validating parts, footprints, nets, and routing…', 'success');
-      validateAndLoadAiProject();
+      return validateAndLoadAiProject() ? 'loaded' : 'rejected';
     } catch (error) {
       setAiValidation(`${error.message}\n\nNo project was loaded. Check the endpoint, model, credentials, and browser CORS permission, then retry.`, 'error');
+      return 'error';
     } finally { aiGenerating = false; button.textContent = 'Generate project with AI'; updateOpenCodeGenerateState(); }
+  }
+  const MAX_SELF_REPAIRS = 2;
+  /** Generate, validate, and (up to MAX_SELF_REPAIRS times) send the validator's problems back to the model. */
+  async function generateWithSelfRepair() {
+    const base = buildAiPrompt(); if (!base) return;
+    let prompt = base; let note = '';
+    for (let attempt = 0; attempt <= MAX_SELF_REPAIRS; attempt++) {
+      const outcome = await generateAiProject(prompt, note);
+      if (outcome !== 'rejected' || !repairContext) return;
+      if (attempt === MAX_SELF_REPAIRS) {
+        setAiValidation(`${$('#aiValidation').textContent}\n\nThe model could not fix this after ${MAX_SELF_REPAIRS} automatic attempts. Press "Fix with AI" to try again, or edit the JSON above.`, 'error');
+        return;
+      }
+      const count = repairContext.issues.length;
+      note = `Self-check ${attempt + 1}/${MAX_SELF_REPAIRS}: the validator found ${count} problem${count === 1 ? '' : 's'} (${repairContext.issues[0].slice(0, 90)}). Asking the model to fix ${count === 1 ? 'it' : 'them'}… `;
+      prompt = `${base}\n\n${buildRepairRequest(repairContext.issues, repairContext.source)}`;
+    }
   }
   function updateAiStream(text) {
     $('#aiProjectResponse').value = text;
@@ -439,15 +457,27 @@
     if (!output.trim()) throw new Error('The OpenCode Inference stream ended without generated text.');
     return output;
   }
+  let repairContext = null; // { issues, source } from the last rejected response
+  const setRepairVisible = (visible) => { $('#repairAiButton').hidden = !visible; };
   function validateAndLoadAiProject() {
     const source = $('#aiProjectResponse').value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     let candidate;
     try { candidate = JSON.parse(source); }
-    catch (error) { setAiValidation(`Could not parse JSON: ${error.message}`, 'error'); return; }
+    catch (error) { repairContext = { issues: [`The response was not valid JSON: ${error.message}`], source }; setRepairVisible(true); setAiValidation(`Could not parse JSON: ${error.message}`, 'error'); return false; }
     const issues = host.validate(candidate);
-    if (issues.length) { setAiValidation(`Project needs fixes:\n• ${issues.slice(0, 8).join('\n• ')}${issues.length > 8 ? `\n• …and ${issues.length - 8} more` : ''}`, 'error'); return; }
+    if (issues.length) { repairContext = { issues, source }; setRepairVisible(true); setAiValidation(`Project needs fixes:\n• ${issues.slice(0, 8).join('\n• ')}${issues.length > 8 ? `\n• …and ${issues.length - 8} more` : ''}`, 'error'); return false; }
+    repairContext = null; setRepairVisible(false);
     const loaded = host.load(candidate); $('#aiDialog').close();
-    showAiReviewNotice(loaded); host.host.showToast('AI-generated project loaded. Not DRC-checked; review before building');
+    showAiReviewNotice(loaded); host.showToast('AI-generated project loaded. Not DRC-checked; review before building');
+    return true;
+  }
+  async function repairAiProject() {
+    if (!repairContext) return;
+    const base = buildAiPrompt(); if (!base) return;
+    const prompt = `${base}\n\n${buildRepairRequest(repairContext.issues, repairContext.source)}`;
+    if ($('#aiWorkflowMode').value === 'direct') { setRepairVisible(false); await generateAiProject(prompt); return; }
+    try { await navigator.clipboard.writeText(prompt); host.showToast('Fix prompt copied. Paste it into your assistant, then paste its reply here'); }
+    catch { $('#aiPromptPreview').value = prompt; $('#aiPromptPreview').closest('details').open = true; setAiValidation('Copy the fix prompt from the box above, send it to your assistant, then paste its reply here.'); }
   }
   function showAiReviewNotice(loaded) {
     const warnings = window.CircuitBoardReview.reviewBoard(loaded);
@@ -463,6 +493,7 @@
   $('#aiCloseButton').addEventListener('click', () => $('#aiDialog').close());
   $('#copyAiPromptButton').addEventListener('click', copyAiPrompt);
   $('#validateAiProjectButton').addEventListener('click', validateAndLoadAiProject);
+  $('#repairAiButton').addEventListener('click', repairAiProject);
   $('#aiDialog').addEventListener('click', (event) => { if (event.target === $('#aiDialog')) $('#aiDialog').close(); });
       bindAiSettings();
       return { hideReviewNotice: hideAiReviewNotice };

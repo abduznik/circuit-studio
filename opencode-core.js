@@ -87,6 +87,20 @@
     if (!path) throw new Error(`Unknown OpenCode API family: ${family}`);
     return path;
   }
+  /** Checklist the model runs on its own answer before replying. Mirrors validateGeneratedProject in app.js; keep them in sync. */
+  const AI_SELF_CHECK = `SELF-CHECK (run this silently on your JSON before you answer; the app validates it and rejects the whole project if any item fails)
+1. format is "circuit-studio" and version is 2; components has at least one entry; nets and board.tracks are arrays; board.width/height are positive and board.layers includes "F.Cu".
+2. Every component: unique id, unique ref, a type from the supported list, a footprint from the supported list, schematic {x,y} and pcb {x,y} placements, and the pcb anchor inside the board.
+3. Every net: unique non-empty name and at least TWO endpoints. A net with one endpoint is rejected: add the other pad it connects to, or delete the net.
+4. Every endpoint: componentId of a component you defined and a pad that exists in that part's pin list (pads are strings). No pad may appear in more than one net.
+5. Every track: net declared in nets, layer enabled on the board, both from/to pads already assigned to that SAME net, and every waypoint inside the board.
+6. Count your nets one by one against rule 3 before replying.
+If you are later told your response failed validation, return the complete corrected JSON object (not a diff) and fix every listed problem.`;
+  /** Prompt section asking a model to fix a rejected project. All issues are listed (the UI only shows the first few). */
+  function buildRepairRequest(issues, previous) {
+    const list = issues.map((issue) => `- ${issue}`).join('\n');
+    return `REPAIR REQUEST\nYour previous response was rejected by the Circuit Studio validator. Return the complete corrected project as one JSON object, with no commentary and no Markdown fences. Fix every problem below and change nothing else unless a fix requires it.\n\nPROBLEMS\n${list}\n\nRULES TO REMEMBER\n- Every net needs at least two pad endpoints; delete a net that would have only one.\n- Use only the supplied part types, pad numbers and footprint IDs.\n\nYOUR PREVIOUS RESPONSE\n${previous}`;
+  }
   /** Extra body fields that switch reasoning off. Verified live on Go chat models: `reasoning_effort: "none"` is accepted by
       every tested model and cuts reasoning to ~0, turning a 10+ minute mimo-v2.6-flash board generation into ~25 s. The
       `thinking` object is rejected by some models (400), so it is not used. Other plans/families keep the model default. */
@@ -191,5 +205,5 @@
   function familyMismatchHint(status, autoDetected) {
     return autoDetected && [400, 404, 422].includes(status) ? ' The API family was auto-detected and may be wrong for this model: try another family in "API FAMILY".' : '';
   }
-  return { openCodeThinkingParams, shouldRetryWithoutThinking, openCodeReasoningText, OPENCODE_PLANS, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, readSseStream, familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
+  return { AI_SELF_CHECK, buildRepairRequest, openCodeThinkingParams, shouldRetryWithoutThinking, openCodeReasoningText, OPENCODE_PLANS, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, readSseStream, familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
 });
