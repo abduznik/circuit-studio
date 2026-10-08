@@ -119,3 +119,13 @@ test('plan-specific paths and extra headers', () => {
   assert.deepEqual(core.openCodeExtraHeaders('inference', 'anthropic', 'T', 'S'), { 'anthropic-version': '2023-06-01' });
   assert.deepEqual(core.openCodeExtraHeaders('inference', 'openai-chat', 'T', 'S'), {});
 });
+
+test('reasoning deltas are separated from answer text for each family', () => {
+  assert.equal(core.openCodeReasoningText({ choices: [{ delta: { reasoning_content: 'think' } }] }, 'openai-chat'), 'think');
+  assert.equal(core.openCodeReasoningText({ choices: [{ delta: { reasoning: 'k3' } }] }, 'openai-chat'), 'k3');
+  assert.equal(core.openCodeDeltaText({ choices: [{ delta: { reasoning_content: 'think' } }] }, 'openai-chat'), '');
+  assert.equal(core.openCodeReasoningText({ type: 'content_block_delta', delta: { thinking: 'hm' } }, 'anthropic'), 'hm');
+  assert.equal(core.openCodeReasoningText({ type: 'response.reasoning_summary_text.delta', delta: 'r' }, 'openai-responses'), 'r');
+  assert.equal(core.openCodeReasoningText({ choices: [{ delta: { content: 'a' } }] }, 'openai-chat'), '');
+  assert.equal(core.openCodeReasoningText(null, 'gemini'), '');
+});

@@ -123,6 +123,13 @@
     const parts = chunk?.candidates?.[0]?.content?.parts;
     return Array.isArray(parts) ? parts.map((part) => part.text || '').join('') : '';
   }
+  /** Reasoning ("thinking") text streamed before the answer by reasoning models; empty for plain models. */
+  function openCodeReasoningText(chunk, family) {
+    if (family === 'openai-chat') { const d = chunk?.choices?.[0]?.delta; const r = d?.reasoning_content ?? d?.reasoning; return typeof r === 'string' ? r : ''; }
+    if (family === 'anthropic') return chunk?.type === 'content_block_delta' && typeof chunk.delta?.thinking === 'string' ? chunk.delta.thinking : '';
+    if (family === 'openai-responses') return /^response\.reasoning(_summary)?_text\.delta$/.test(chunk?.type || '') && typeof chunk.delta === 'string' ? chunk.delta : '';
+    return '';
+  }
   function openCodeWholeResponseText(result, family) {
     if (family === 'openai-chat') return compatibleResponseText(result);
     if (family === 'openai-responses') return typeof result?.output_text === 'string' ? result.output_text : (result?.output || []).flatMap((item) => item.content || []).map((part) => part.text || '').join('');
@@ -174,5 +181,5 @@
   function familyMismatchHint(status, autoDetected) {
     return autoDetected && [400, 404, 422].includes(status) ? ' The API family was auto-detected and may be wrong for this model: try another family in "API FAMILY".' : '';
   }
-  return { OPENCODE_PLANS, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, readSseStream, familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
+  return { openCodeReasoningText, OPENCODE_PLANS, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, readSseStream, familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
 });

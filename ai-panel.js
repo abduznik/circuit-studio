@@ -13,7 +13,7 @@
   const AI_SETTINGS_KEY = 'circuit-studio.ai-settings.v1';
   const AI_KEY_STORAGE_KEY = 'circuit-studio.ai-key.v1';
   const AI_OPENCODE_TOKEN_KEY = 'circuit-studio.opencode-token.v1';
-  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel, familyMismatchHint, readSseStream } = window.CircuitOpenCode;
+  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, buildOpenCodeURL, openCodeDeltaText, openCodeReasoningText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel, familyMismatchHint, readSseStream } = window.CircuitOpenCode;
   function buildAiPrompt() {
     const brief = $('#designBrief').value.trim();
     if (!brief) { setAiValidation('Describe the circuit or PCB you want first.', 'error'); return null; }
@@ -410,7 +410,7 @@
       if (!text.trim()) throw new Error('OpenCode Inference returned no assistant text.');
       updateAiStream(text); return text;
     }
-    let output = '';
+    let output = ''; let reasoned = 0; let lastReasonNote = 0;
     await readSseStream(response, (data) => {
       let chunk; try { chunk = JSON.parse(data); } catch { return; }
       if (request.family === 'openai-responses' && (chunk?.type === 'response.failed' || chunk?.type === 'response.error')) {
@@ -420,6 +420,10 @@
       if (request.family === 'anthropic' && chunk?.type === 'error') throw new Error(`OpenCode Inference stream error: ${chunk.error?.message || 'unknown streaming error'}`);
       const delta = openCodeDeltaText(chunk, request.family);
       if (delta) { output += delta; updateAiStream(output); }
+      else if (!output) {
+        const thought = openCodeReasoningText(chunk, request.family);
+        if (thought) { reasoned += thought.length; if (reasoned - lastReasonNote >= 500) { lastReasonNote = reasoned; setAiValidation(`The model is reasoning before it answers (${reasoned.toLocaleString()} characters so far). The design JSON starts streaming when it finishes; reasoning models can take a minute or more.`); } }
+      }
     });
     if (!output.trim()) throw new Error('The OpenCode Inference stream ended without generated text.');
     return output;
