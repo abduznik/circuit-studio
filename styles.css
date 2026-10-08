@@ -22,3 +22,5 @@
 .ai-dialog [hidden]{display:none!important}
 .ai-verify-row{display:flex;align-items:center;gap:12px;margin-top:13px}.ai-verify-row .button{flex:none}.ai-verify-row span{font-size:11px;line-height:1.5;color:#7f8b92}.ai-verify-row span.error{color:#bd5a40;font-weight:600}.ai-verify-row span.success{color:#41855f;font-weight:600}
 @media(max-width:760px){.ai-verify-row{align-items:flex-start;flex-direction:column}}
+
+.ai-review-notice{position:fixed;left:276px;bottom:40px;width:min(420px,calc(100vw - 32px));max-height:50vh;overflow:auto;background:#fffaf0;border:1px solid #f0dcae;border-radius:8px;box-shadow:0 8px 28px #10182026;padding:12px 14px;color:#6b5420;font-size:10px;line-height:1.5;z-index:15}.ai-review-notice[hidden]{display:none}.ai-review-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.ai-review-head strong{font:600 12px 'Space Grotesk',sans-serif}.ai-review-notice p{margin:6px 0}.ai-review-notice h3{font:500 9px 'DM Mono',monospace;letter-spacing:.6px;text-transform:uppercase;margin:10px 0 4px;color:#8a6d2b}.ai-review-notice ul{margin:0;padding-left:16px}.ai-review-notice li{margin-bottom:3px}

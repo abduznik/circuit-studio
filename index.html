@@ -155,8 +155,10 @@
       <div class="ai-validation" id="aiValidation" role="status" aria-live="polite">The validator checks part types, footprints, pad-to-net references, board dimensions and routed-net endpoints.</div>
       <div class="ai-dialog-footer"><span id="aiFooterInfo">Copy/paste mode needs no API key. Direct mode uses your configured endpoint.</span><button class="button button-primary" id="validateAiProjectButton">Validate &amp; load</button></div>
     </dialog>
+    <aside class="ai-review-notice" id="aiReviewNotice" role="region" aria-label="AI-generated design review" hidden><div class="ai-review-head"><strong>AI-generated design: needs review</strong><button class="icon-button mini" id="aiReviewDismiss" type="button" aria-label="Dismiss notice">×</button></div><p id="aiReviewSummary"></p><div id="aiReviewBody"></div></aside>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="opencode-core.js"></script>
+    <script src="board-review.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

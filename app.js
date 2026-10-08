@@ -721,7 +721,7 @@
         if (loaded.format !== 'circuit-studio' || !Array.isArray(loaded.components) || !Array.isArray(loaded.wires)) throw new Error('Unsupported project file');
         loaded.components.forEach((c) => { if (!definitions[c.type]) throw new Error(`Unknown component type: ${c.type}`); });
         if (loaded.version === 2) { const issues = validateGeneratedProject(loaded); if (issues.length) throw new Error(issues.slice(0, 5).join(' ')); }
-        saveHistory(); project = normalizeProject(loaded); selected = null; activeView = 'schematic'; setSaved(); render(); showToast('Project opened');
+        saveHistory(); project = normalizeProject(loaded); selected = null; activeView = 'schematic'; setSaved(); render(); hideAiReviewNotice(); showToast('Project opened');
       } catch (error) { showToast(error.message || 'Could not open project'); }
       $('#fileInput').value = '';
     };
@@ -1267,8 +1267,18 @@
     const issues = validateGeneratedProject(candidate);
     if (issues.length) { setAiValidation(`Project needs fixes:\n• ${issues.slice(0, 8).join('\n• ')}${issues.length > 8 ? `\n• …and ${issues.length - 8} more` : ''}`, 'error'); return; }
     saveHistory(); project = normalizeProject(candidate); selected = null; checks = []; inspectorTab = 'properties'; activeView = 'schematic'; setSaved(); render(); $('#aiDialog').close();
-    showToast('AI-generated project loaded');
+    showAiReviewNotice(project); showToast('AI-generated project loaded. Not DRC-checked; review before building');
   }
+  function showAiReviewNotice(loaded) {
+    const warnings = window.CircuitBoardReview.reviewBoard(loaded);
+    const assumptions = (loaded.assumptions || []).filter((item) => typeof item === 'string' && item.trim());
+    $('#aiReviewSummary').textContent = window.CircuitBoardReview.loadedSummary(loaded);
+    const section = (title, items, cls) => items.length ? `<h3>${title}</h3><ul class="${cls}">${items.map((item) => `<li>${item}</li>`).join('')}</ul>` : '';
+    $('#aiReviewBody').innerHTML = section('Heuristic warnings (not DRC)', warnings.map((w) => `<b>${esc(w.title)}</b> ${esc(w.detail)}`), 'warn') + section('Model assumptions', assumptions.map(esc), 'assume') + (assumptions.length ? '' : '<h3>Model assumptions</h3><p>The model listed none. Treat that as unverified, not as “nothing assumed”.</p>');
+    $('#aiReviewNotice').hidden = false;
+  }
+  const hideAiReviewNotice = () => { $('#aiReviewNotice').hidden = true; };
+  $('#aiReviewDismiss').addEventListener('click', hideAiReviewNotice);
   $('#aiBuildButton').addEventListener('click', () => { setAiValidation('The validator checks part types, footprints, pad-to-net references, board dimensions and routed-net endpoints.'); $('#aiDialog').showModal(); $('#designBrief').focus(); });
   $('#aiCloseButton').addEventListener('click', () => $('#aiDialog').close());
   $('#copyAiPromptButton').addEventListener('click', copyAiPrompt);
@@ -1287,7 +1297,7 @@
   $('#exportButton').addEventListener('click', exportSvg);
   $('#openButton').addEventListener('click', () => $('#fileInput').click());
   $('#fileInput').addEventListener('change', (event) => { if (event.target.files[0]) loadProject(event.target.files[0]); });
-  $('#newProjectButton').addEventListener('click', () => { if (confirm('Start a new PCB project? You can save the current project first.')) { saveHistory(); project = { format: 'circuit-studio', version: 2, name: 'Untitled PCB project', units: 'mm', design: { revision: 'A', layers: ['F.Cu', 'B.Cu'] }, schematic: { width: 1200, height: 700 }, components: [], nets: [], wires: [], board: { width: 76, height: 52, layers: ['F.Cu', 'B.Cu'], tracks: [], vias: [], keepouts: [], mountingHoles: [] }, annotations: [] }; selected = null; checks = []; activeView = 'schematic'; setSaved(); render(); } });
+  $('#newProjectButton').addEventListener('click', () => { if (confirm('Start a new PCB project? You can save the current project first.')) { saveHistory(); project = { format: 'circuit-studio', version: 2, name: 'Untitled PCB project', units: 'mm', design: { revision: 'A', layers: ['F.Cu', 'B.Cu'] }, schematic: { width: 1200, height: 700 }, components: [], nets: [], wires: [], board: { width: 76, height: 52, layers: ['F.Cu', 'B.Cu'], tracks: [], vias: [], keepouts: [], mountingHoles: [] }, annotations: [] }; selected = null; checks = []; activeView = 'schematic'; setSaved(); render(); hideAiReviewNotice(); } });
   $('#undoButton').addEventListener('click', () => restoreHistory(undoStack, redoStack)); $('#redoButton').addEventListener('click', () => restoreHistory(redoStack, undoStack));
   $('#deleteButton').addEventListener('click', removeSelected);
   $('#runChecksButton').addEventListener('click', () => activeView === 'board' ? runBoardChecks() : runChecks()); $('#propertiesCheckButton').addEventListener('click', () => activeView === 'board' ? runBoardChecks() : runChecks());
