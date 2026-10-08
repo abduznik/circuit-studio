@@ -60,3 +60,7 @@ npm test    # Node 22.12+, no dependencies
 ```
 
 Covers family routing, free-model flagging, stream/response parsing, error handling, and the CORS relay/local server (against a mock OpenCode upstream, including unbuffered SSE and the path allow-list).
+
+## Hosted proxy
+
+The hosted site defaults to `https://circuit-studio-opencode-proxy.bacholate.workers.dev` (a Cloudflare Worker running `proxy/opencode-cors-worker.js`, path-allow-listed, no logging or storage). It forwards your OpenCode key to opencode.ai, so it sees the key in transit: if you'd rather not trust it, run `node server.js` locally (used automatically) or enter your own proxy URL in the app.
