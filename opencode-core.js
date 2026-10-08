@@ -113,5 +113,9 @@
   // runtime FreeTierError handling stays the source of truth, this only warns early.
   const OPENCODE_FREE_MODELS = /^(big-pickle$|.*-free$|mimo-|ling-|nemotron-|longcat-)/;
   function isLikelyFreeModel(modelID) { return OPENCODE_FREE_MODELS.test(String(modelID).toLowerCase()); }
-  return { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
+  // When auto-detect guessed the family and the endpoint rejects the model (issue #6), point at the manual override.
+  function familyMismatchHint(status, autoDetected) {
+    return autoDetected && [400, 404, 422].includes(status) ? ' The API family was auto-detected and may be wrong for this model: try another family in "API FAMILY".' : '';
+  }
+  return { familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
 });

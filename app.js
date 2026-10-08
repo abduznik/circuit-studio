@@ -72,7 +72,7 @@
   const AI_SETTINGS_KEY = 'circuit-studio.ai-settings.v1';
   const AI_KEY_STORAGE_KEY = 'circuit-studio.ai-key.v1';
   const AI_OPENCODE_TOKEN_KEY = 'circuit-studio.opencode-token.v1';
-  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel } = window.CircuitOpenCode;
+  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel, familyMismatchHint } = window.CircuitOpenCode;
 
   const $ = (selector) => document.querySelector(selector);
   const svg = $('#schematic');
@@ -1200,7 +1200,7 @@
           : { model, stream: true, max_tokens: 16000, system, messages: [{ role: 'user', content: user }] };
     if (family === 'anthropic') headers['anthropic-version'] = '2023-06-01';
     return {
-      family, model, headers, body, proxy,
+      family, model, headers, body, proxy, autoFamily: $('#openCodeFamily').value === 'auto',
       directUrl: buildOpenCodeURL(OPENCODE_ORIGIN, path),
       proxyUrl: proxy.url ? buildOpenCodeURL(proxy.url, path) : '',
     };
@@ -1210,7 +1210,7 @@
       const response = await fetch(url, { method: 'POST', headers: request.headers, body: JSON.stringify(request.body) });
       if (response.ok) return response;
       const raw = await response.text();
-      return { error: `OpenCode Inference returned HTTP ${response.status}: ${openCodeErrorDetail(raw)}` };
+      return { error: `OpenCode Inference returned HTTP ${response.status}: ${openCodeErrorDetail(raw)}${familyMismatchHint(response.status, request.autoFamily)}` };
     };
     if (request.proxyUrl) return attempt(request.proxyUrl);
     try { return await attempt(request.directUrl); }

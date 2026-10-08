@@ -69,3 +69,11 @@ test('extractCompleteJsonArrayObjects returns only finished objects, tolerating 
   assert.deepEqual(core.extractCompleteJsonArrayObjects('{"nets":[]}', 'nets'), []);
   assert.deepEqual(core.extractCompleteJsonArrayObjects('{}', 'nets'), []);
 });
+
+test('family mismatch hint only appears for auto-detected families on rejection statuses (issue #6)', () => {
+  assert.match(core.familyMismatchHint(404, true), /API FAMILY/);
+  assert.match(core.familyMismatchHint(400, true), /API FAMILY/);
+  assert.equal(core.familyMismatchHint(404, false), '');
+  assert.equal(core.familyMismatchHint(401, true), '');
+  assert.equal(core.familyMismatchHint(403, true), '');
+});
