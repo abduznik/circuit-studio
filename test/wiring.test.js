@@ -47,3 +47,12 @@ test('LED and diode parts carry footprints and pad numbers so the AI can use the
   }
   assert.ok(app.includes("'LED_SMD:LED_0603_1608Metric'") && app.includes("'Diode_SMD:D_SOD-123'"));
 });
+
+test('the prompt example is generic and the contract tells the model to design only what was asked', () => {
+  const panel = fs.readFileSync(path.join(root, 'ai-panel.js'), 'utf8');
+  const example = panel.slice(panel.indexOf('const schemaExample'), panel.indexOf('annotations: [], assumptions'));
+  assert.ok(example.length > 200);
+  assert.ok(!/esp32|display|LCD_/i.test(example), 'models copy examples, so the example must not contain an MCU or display');
+  assert.match(panel, /Design ONLY what the request asks for/);
+  assert.match(panel, /If, and only if, you use the ESP32 part/);
+});

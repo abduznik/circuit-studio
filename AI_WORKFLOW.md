@@ -168,3 +168,9 @@ Generation used to produce about 50k characters for a simple board. Causes and f
 - JSON syntax errors sent back for repair include a marked excerpt of the offending text.
 
 Measured on `mimo-v2.6-flash` (thinking off) with the brief "add a 6 led state with switches...": 9.4k characters in about 26 s, one JSON typo that a real repair round fixed, then 23 parts (including `led`) and 24 nets loaded and validated.
+
+### Keeping simple requests simple
+
+Models copy the format example they are shown. The old example was an ESP32 plus an LCD header, so unrelated requests came back with an ESP32 and a display. The example is now a three-part LED circuit, the contract says "design ONLY what the request asks for", the ESP32 GPIO note applies only if the ESP32 is used, and the big modules are listed last. A test checks that the example never contains an MCU or display.
+
+Measured on `mimo-v2.6-flash` (thinking off): "a simple LED circuit..." gave 3 parts in 6 s; "add a 6 led state with switches..." gave 19 parts and no ESP32/display after one repair round (the first answer reused three resistor pads in two nets, the validator caught it, and the repair prompt fixed it).
