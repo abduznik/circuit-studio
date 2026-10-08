@@ -14,7 +14,7 @@ OpenCode's generation endpoints send no CORS headers (issue #1), so a plain stat
 node server.js          # http://127.0.0.1:8080, Node 22.12+, no dependencies
 ```
 
-Open **Build with AI**, choose **OpenCode Inference**, paste your Console service-account token, click **Verify token & load models**, pick a paid model (free-tier models are marked and only work inside the OpenCode app), and generate. The token goes only from your browser to the local server to opencode.ai.
+Open **Build with AI**, choose **OpenCode Inference**, pick your **OpenCode plan** (**Go** subscription or the Console-credit **Inference API**), paste your API key / service-account token, click **Verify token & load models**, pick a model (on the Inference API, free-tier models are marked and only work inside the OpenCode app; Go needs no credits), and generate. The token goes only from your browser to the local server to opencode.ai.
 
 To load the included project file instead, choose **Open** and select [`examples/esp32-st7789-ips.circuit.json`](examples/esp32-st7789-ips.circuit.json).
 

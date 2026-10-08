@@ -13,10 +13,11 @@ test.before(async () => {
   upstream = http.createServer((req, res) => {
     let body = ''; req.on('data', (c) => { body += c; });
     req.on('end', () => {
-      seen.push({ method: req.method, url: req.url, auth: req.headers.authorization, org: req.headers['x-opencode-org-id'], body });
+      seen.push({ method: req.method, url: req.url, auth: req.headers.authorization, org: req.headers['x-opencode-org-id'], session: req.headers['x-opencode-session'], ua: req.headers['user-agent'], key: req.headers['x-api-key'], body });
       if (req.url === '/inference/v1/models') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ data: [{ id: 'gpt-5.1' }, { id: 'big-pickle' }] })); }
       if (req.url === '/inference/openai/v1/chat/completions' && body.includes('big-pickle')) { res.writeHead(403, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ type: 'error', error: { type: 'FreeTierError', message: "OpenCode's free tier can only be used from within OpenCode" } })); }
-      if (req.url.startsWith('/inference/')) {
+      if (req.url === '/zen/go/v1/models') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ data: [{ id: 'glm-5.3-flash' }] })); }
+      if (req.url.startsWith('/inference/') || req.url.startsWith('/zen/go/')) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         res.write('data: {"choices":[{"delta":{"content":"first"}}]}\n\n');
         setTimeout(() => { res.write('data: [DONE]\n\n'); res.end(); }, 150);
@@ -95,4 +96,27 @@ test('proxy is not an open relay', async () => {
   }
   assert.equal((await fetch(`${base}/opencode-proxy/inference/v1/models`, { method: 'DELETE' })).status, 405);
   assert.equal(seen.length, 0);
+});
+
+test('OpenCode Go paths are relayed; the proxy supplies a session id and user agent when missing', async () => {
+  seen.length = 0;
+  const models = await fetch(`${base}/opencode-proxy/zen/go/v1/models`, { headers: { Authorization: 'Bearer go-key' } });
+  assert.equal(models.status, 200);
+  assert.deepEqual((await models.json()).data.map((m) => m.id), ['glm-5.3-flash']);
+  await (await fetch(`${base}/opencode-proxy/zen/go/v1/chat/completions`, { method: 'POST', headers: { Authorization: 'Bearer go-key' }, body: '{}' })).text();
+  assert.match(seen[1].session, /^[0-9a-f-]{36}$/);
+  assert.equal(seen[1].ua, 'circuit-studio-proxy/1.0');
+});
+
+test('a client-supplied Go session id and x-api-key are forwarded unchanged; preflight allows the session header', async () => {
+  seen.length = 0;
+  await (await fetch(`${base}/opencode-proxy/zen/go/v1/messages`, { method: 'POST', headers: { 'x-opencode-session': 'abc-123', 'x-api-key': 'K', 'anthropic-version': '2023-06-01' }, body: '{}' })).text();
+  assert.equal(seen[0].session, 'abc-123');
+  assert.equal(seen[0].key, 'K');
+  const pre = await fetch(`${base}/opencode-proxy/zen/go/v1/chat/completions`, { method: 'OPTIONS' });
+  assert.match(pre.headers.get('access-control-allow-headers'), /X-Opencode-Session/i);
+});
+
+test('Go allow-list rejects other zen paths', async () => {
+  for (const p of ['zen/v1/chat/completions', 'zen/go/v1/admin']) assert.equal((await fetch(`${base}/opencode-proxy/${p}`, { method: 'POST', body: '{}' })).status, 403, p);
 });

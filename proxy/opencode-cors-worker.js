@@ -31,6 +31,11 @@ const ALLOWED_PATHS = new Set([
   'inference/openai/v1/chat/completions',
   'inference/openai/v1/responses',
   'inference/anthropic/v1/messages',
+  // OpenCode Go (subscription)
+  'zen/go/v1/models',
+  'zen/go/v1/chat/completions',
+  'zen/go/v1/responses',
+  'zen/go/v1/messages',
 ]);
 const FORWARDED_HEADERS = [
   'authorization',
@@ -41,12 +46,13 @@ const FORWARDED_HEADERS = [
   'x-goog-api-key',
   'x-opencode-org-id',
   'x-org-id',
+  'x-opencode-session',
 ];
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, Anthropic-Version, X-Api-Key, X-Goog-Api-Key, X-Opencode-Org-Id, X-Org-Id',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, Anthropic-Version, X-Api-Key, X-Goog-Api-Key, X-Opencode-Org-Id, X-Org-Id, X-Opencode-Session',
   'Access-Control-Max-Age': '86400',
 };
 
@@ -72,6 +78,9 @@ export default {
       if (value) headers.set(name, value);
     }
     headers.set('Accept-Encoding', 'identity');
+    headers.set('User-Agent', 'circuit-studio-proxy/1.0');
+    // OpenCode Go rejects requests without a session id (MissingSessionID); supply a stable-per-request one if the client sent none.
+    if (path.startsWith('zen/go/') && !headers.has('x-opencode-session')) headers.set('x-opencode-session', crypto.randomUUID());
 
     let body;
     if (request.method === 'POST') body = await request.text();

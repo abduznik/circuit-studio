@@ -49,12 +49,51 @@
     { family: 'anthropic', test: /^qwen3\.(?:[567]-|8-flash)/ },
     { family: 'openai-chat', test: /^qwen3\.8-max/ },
   ];
-  function openCodeFamilyFor(modelID) {
-    if (OPENCODE_UNSUPPORTED.test(String(modelID).toLowerCase())) return 'unsupported';
-    const rule = OPENCODE_FAMILY_RULES.find((entry) => entry.test.test(String(modelID).toLowerCase()));
+  // OpenCode Go (subscription) serves a different endpoint set. Verified live against /zen/go/v1:
+  // gpt-* is Responses-only, claude-* is Messages-only, everything else (including qwen3.8-max and
+  // minimax-m3, which accept both) is reliable on Chat Completions.
+  const OPENCODE_GO_FAMILY_RULES = [
+    { family: 'anthropic', test: /^claude-/ },
+    { family: 'openai-responses', test: /^(gpt|grok|muse-spark)-/ },
+  ];
+  const OPENCODE_PLANS = {
+    inference: {
+      label: 'OpenCode Inference API (Console credits)',
+      modelsPath: 'inference/v1/models',
+      paths: { 'openai-chat': 'inference/openai/v1/chat/completions', 'openai-responses': 'inference/openai/v1/responses', anthropic: 'inference/anthropic/v1/messages' },
+    },
+    go: {
+      label: 'OpenCode Go (subscription)',
+      modelsPath: 'zen/go/v1/models',
+      paths: { 'openai-chat': 'zen/go/v1/chat/completions', 'openai-responses': 'zen/go/v1/responses', anthropic: 'zen/go/v1/messages' },
+    },
+  };
+  function openCodeFamilyFor(modelID, plan = 'inference') {
+    const id = String(modelID).toLowerCase();
+    if (OPENCODE_UNSUPPORTED.test(id)) return 'unsupported';
+    const rules = plan === 'go' ? OPENCODE_GO_FAMILY_RULES : OPENCODE_FAMILY_RULES;
+    const rule = rules.find((entry) => entry.test.test(id));
     return rule ? rule.family : 'openai-chat';
   }
-
+  function openCodeModelsPath(plan) { return (OPENCODE_PLANS[plan] || OPENCODE_PLANS.inference).modelsPath; }
+  /** Upstream path for a request. Gemini exists only on the Inference API. */
+  function openCodePathFor(plan, family, model) {
+    const config = OPENCODE_PLANS[plan] || OPENCODE_PLANS.inference;
+    if (family === 'gemini') {
+      if (plan === 'go') throw new Error('OpenCode Go has no Gemini endpoint. Choose another API family or model.');
+      return `inference/google/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
+    }
+    const path = config.paths[family];
+    if (!path) throw new Error(`Unknown OpenCode API family: ${family}`);
+    return path;
+  }
+  /** Headers the plan requires beyond content type and bearer auth. */
+  function openCodeExtraHeaders(plan, family, token, sessionId) {
+    if (plan !== 'go') return family === 'anthropic' ? { 'anthropic-version': '2023-06-01' } : {};
+    const headers = { 'x-opencode-session': sessionId };
+    if (family === 'anthropic') { headers['anthropic-version'] = '2023-06-01'; headers['x-api-key'] = token; }
+    return headers;
+  }
   function buildOpenCodeURL(base, target) {
     const [path, search = ''] = target.split('?');
     if (base === OPENCODE_ORIGIN) return `${OPENCODE_ORIGIN}/${path}${search ? `?${search}` : ''}`;
@@ -135,5 +174,5 @@
   function familyMismatchHint(status, autoDetected) {
     return autoDetected && [400, 404, 422].includes(status) ? ' The API family was auto-detected and may be wrong for this model: try another family in "API FAMILY".' : '';
   }
-  return { readSseStream, familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
+  return { OPENCODE_PLANS, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, readSseStream, familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
 });

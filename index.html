@@ -129,7 +129,9 @@
           <p class="ai-security-note"><strong>Direct API mode:</strong> your browser sends the prompt (including the open project in Modify mode) and API key directly to this Base URL; they do not pass through Circuit Studio. The provider receives them. OpenAI recommends keeping API keys server-side. Remembered keys are stored unencrypted in this browser's local storage, where scripts running on this site can read them. Key memory is off by default; use a limited key. <a href="https://platform.openai.com/docs/api-reference/responses#authentication" target="_blank" rel="noopener">OpenAI key guidance</a></p>
         </div>
         <div class="ai-provider-panel" id="opencodeSettings" hidden>
-          <label class="field-label" for="opencodeToken">OPENCODE INFERENCE SERVICE-ACCOUNT TOKEN</label>
+          <label class="field-label" for="openCodePlan">OPENCODE PLAN</label>
+          <select class="field-select" id="openCodePlan"><option value="go">OpenCode Go (subscription)</option><option value="inference">OpenCode Inference API (Console credits)</option></select>
+          <label class="field-label" for="opencodeToken">OPENCODE API KEY / SERVICE-ACCOUNT TOKEN</label>
           <div class="ai-secret-row"><input class="field-input" id="opencodeToken" type="password" autocomplete="off" placeholder="Paste your OpenCode Console service-account token" /><button class="small-action" id="toggleOpenCodeTokenButton" type="button" title="Show or hide token">Show</button><button class="button button-quiet ai-clear-key" id="clearOpenCodeTokenButton" type="button">Clear saved token</button></div>
           <div class="ai-storage-row"><label><input id="rememberOpenCodeToken" type="checkbox" /> Remember token on this browser</label><span id="openCodeTokenStorageState">Token stays in memory for this tab.</span></div>
           <div class="ai-form-grid"><div><label class="field-label" for="opencodeOrgId">ORG ID <span class="optional-label">(only for user session tokens)</span></label><input class="field-input" id="opencodeOrgId" autocomplete="off" placeholder="Leave blank for a service-account key" /></div><div></div></div>

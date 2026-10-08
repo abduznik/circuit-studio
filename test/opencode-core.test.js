@@ -93,3 +93,29 @@ test('readSseStream stops when the handler returns true and propagates handler e
   assert.deepEqual(got, ['1']);
   await assert.rejects(core.readSseStream(sseResponse('data: x\n\n'), () => { throw new Error('boom'); }), /boom/);
 });
+
+test('OpenCode Go routing differs from the Inference API where verified live', () => {
+  const go = (m) => core.openCodeFamilyFor(m, 'go');
+  assert.equal(go('gpt-6-luna'), 'openai-responses');
+  assert.equal(go('grok-4.7'), 'openai-responses');
+  assert.equal(go('claude-haiku-5-5'), 'anthropic');
+  for (const m of ['glm-5.3-flash', 'kimi-k3', 'deepseek-v4-pro', 'omen-alpha', 'hy3', 'minimax-m3', 'qwen3.8-max', 'unknown-model']) assert.equal(go(m), 'openai-chat', m);
+  assert.equal(core.openCodeFamilyFor('minimax-m3'), 'openai-chat'); // default plan keeps its own rules
+  assert.equal(core.openCodeFamilyFor('qwen3.8-flash'), 'anthropic');
+  assert.equal(go('jev-1'), 'unsupported');
+});
+
+test('plan-specific paths and extra headers', () => {
+  assert.equal(core.openCodeModelsPath('go'), 'zen/go/v1/models');
+  assert.equal(core.openCodeModelsPath('inference'), 'inference/v1/models');
+  assert.equal(core.openCodePathFor('go', 'openai-chat', 'm'), 'zen/go/v1/chat/completions');
+  assert.equal(core.openCodePathFor('go', 'openai-responses', 'm'), 'zen/go/v1/responses');
+  assert.equal(core.openCodePathFor('go', 'anthropic', 'm'), 'zen/go/v1/messages');
+  assert.equal(core.openCodePathFor('inference', 'gemini', 'g/1'), 'inference/google/v1beta/models/g%2F1:streamGenerateContent?alt=sse');
+  assert.throws(() => core.openCodePathFor('go', 'gemini', 'g'), /no Gemini/);
+  assert.throws(() => core.openCodePathFor('go', 'bogus', 'm'));
+  assert.deepEqual(core.openCodeExtraHeaders('go', 'openai-chat', 'T', 'S'), { 'x-opencode-session': 'S' });
+  assert.deepEqual(core.openCodeExtraHeaders('go', 'anthropic', 'T', 'S'), { 'x-opencode-session': 'S', 'anthropic-version': '2023-06-01', 'x-api-key': 'T' });
+  assert.deepEqual(core.openCodeExtraHeaders('inference', 'anthropic', 'T', 'S'), { 'anthropic-version': '2023-06-01' });
+  assert.deepEqual(core.openCodeExtraHeaders('inference', 'openai-chat', 'T', 'S'), {});
+});

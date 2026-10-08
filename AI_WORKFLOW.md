@@ -143,3 +143,7 @@ The live API flow uses an HTTP `POST` to `/v1/chat/completions` with streaming e
 ## Post-load review notice
 
 After an AI load, a dismissible notice lists the model's `assumptions` and heuristic warnings from `board-review.js` (nets with no routed track, vias on untracked nets, same-layer crossings between different nets, parts outside the outline). These are heuristics, not DRC: the notice states what was checked and what was not (clearance, courtyard overlap, ERC, power budget, signal integrity, antenna keepouts, manufacturing rules). Do not add wording that implies a check that is not implemented.
+
+## OpenCode Go
+
+The **OpenCode plan** selector switches between the Inference API (`/inference/...`, Console credits) and the Go subscription (`/zen/go/v1/...`). Verified live against Go: it requires an `x-opencode-session` header (otherwise `MissingSessionID`), Anthropic-style `/messages` also needs `x-api-key`, `gpt-*` is Responses-only, `claude-*` is Messages-only, and other models work on Chat Completions. Go generation sends no CORS headers either, so the relay or proxy is still required; the proxy adds a session id and user agent when a client sends none. Several Go models are reasoning models that stream `reasoning_content` before `content`, so the first visible output can take a while.

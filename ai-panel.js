@@ -13,7 +13,7 @@
   const AI_SETTINGS_KEY = 'circuit-studio.ai-settings.v1';
   const AI_KEY_STORAGE_KEY = 'circuit-studio.ai-key.v1';
   const AI_OPENCODE_TOKEN_KEY = 'circuit-studio.opencode-token.v1';
-  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel, familyMismatchHint, readSseStream } = window.CircuitOpenCode;
+  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel, familyMismatchHint, readSseStream } = window.CircuitOpenCode;
   function buildAiPrompt() {
     const brief = $('#designBrief').value.trim();
     if (!brief) { setAiValidation('Describe the circuit or PCB you want first.', 'error'); return null; }
@@ -70,6 +70,7 @@
       if (saved.model) $('#aiModel').value = saved.model;
       if (saved.openCodeModel) preferredOpenCodeModel = saved.openCodeModel;
       if (saved.openCodeFamily) { preferredOpenCodeFamily = saved.openCodeFamily; $('#openCodeFamily').value = saved.openCodeFamily; }
+      if (saved.openCodePlan === 'go' || saved.openCodePlan === 'inference') $('#openCodePlan').value = saved.openCodePlan;
       if (saved.openCodeOrgId) $('#opencodeOrgId').value = saved.openCodeOrgId;
       if (saved.openCodeProxyUrl) $('#openCodeProxyUrl').value = saved.openCodeProxyUrl;
       const rememberedKey = localStorage.getItem(AI_KEY_STORAGE_KEY);
@@ -87,6 +88,7 @@
       model: $('#aiModel').value.trim(),
       openCodeModel: $('#openCodeModelSelect').value || preferredOpenCodeModel,
       openCodeFamily: $('#openCodeFamily').value,
+      openCodePlan: $('#openCodePlan').value,
       openCodeOrgId: $('#opencodeOrgId').value.trim(),
       openCodeProxyUrl: $('#openCodeProxyUrl').value.trim(),
     };
@@ -157,6 +159,7 @@
     $('#aiConnectionMode').addEventListener('change', () => { updateAiConnectionUi(); saveAiSettings(); });
     ['aiBaseUrl', 'aiModel', 'opencodeOrgId', 'openCodeProxyUrl'].forEach((id) => $(`#${id}`).addEventListener('change', saveAiSettings));
     $('#openCodeModelSelect').addEventListener('change', () => { preferredOpenCodeModel = $('#openCodeModelSelect').value; saveAiSettings(); updateOpenCodeGenerateState(); updateOpenCodeModelStatus(); });
+    $('#openCodePlan').addEventListener('change', () => { saveAiSettings(); invalidateOpenCodeVerification(); });
     $('#openCodeFamily').addEventListener('change', () => { preferredOpenCodeFamily = $('#openCodeFamily').value; saveAiSettings(); updateOpenCodeModelStatus(); });
     $('#rememberAiKey').addEventListener('change', () => { persistAiKeyPreference(); saveAiSettings(); });
     $('#aiApiKey').addEventListener('change', persistAiKeyPreference);
@@ -186,23 +189,26 @@
   function setOpenCodeVerifyStatus(message, state = '') {
     const label = $('#openCodeVerifyStatus'); label.textContent = message; label.classList.toggle('error', state === 'error'); label.classList.toggle('success', state === 'success');
   }
+  const openCodePlan = () => $('#openCodePlan').value;
+  const openCodeSessionId = (window.crypto?.randomUUID?.() || `cs-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const freeTierApplies = () => openCodePlan() === 'inference';
   function detectOpenCodeFamily(modelID) {
-    const family = openCodeFamilyFor(modelID);
+    const family = openCodeFamilyFor(modelID, openCodePlan());
     return family === 'unsupported' ? 'openai-chat' : family;
   }
   function fillOpenCodeModelSelect(models) {
     const select = $('#openCodeModelSelect');
-    const usable = models.filter((model) => openCodeFamilyFor(model.id) !== 'unsupported');
+    const usable = models.filter((model) => openCodeFamilyFor(model.id, openCodePlan()) !== 'unsupported');
     const order = ['openai-responses', 'anthropic', 'gemini', 'openai-chat'];
     const groups = new Map(order.map((family) => [family, []]));
-    usable.forEach((model) => groups.get(openCodeFamilyFor(model.id)).push(model));
+    usable.forEach((model) => groups.get(openCodeFamilyFor(model.id, openCodePlan())).push(model));
     select.replaceChildren();
     order.forEach((family) => {
       const entries = groups.get(family);
       if (!entries.length) return;
       const group = document.createElement('optgroup');
       group.label = familyLabel(family);
-      entries.forEach((model) => group.appendChild(new Option(isLikelyFreeModel(model.id) ? `${model.name} (free tier — app only)` : model.name, model.id)));
+      entries.forEach((model) => group.appendChild(new Option(freeTierApplies() && isLikelyFreeModel(model.id) ? `${model.name} (free tier — app only)` : model.name, model.id)));
       select.appendChild(group);
     });
     return usable;
@@ -213,7 +219,7 @@
     if (!model) { setOpenCodeVerifyStatus(`Token verified · ${verifiedOpenCodeModels.length} models loaded.`, 'success'); return; }
     const chosen = $('#openCodeFamily').value;
     const family = chosen === 'auto' ? detectOpenCodeFamily(model) : chosen;
-    const freeNote = isLikelyFreeModel(model) ? ' Free-tier models only work inside the OpenCode app; pick a paid model.' : '';
+    const freeNote = freeTierApplies() && isLikelyFreeModel(model) ? ' Free-tier models only work inside the OpenCode app; pick a paid model.' : '';
     setOpenCodeVerifyStatus(`Token verified · ${verifiedOpenCodeModels.length} models loaded · ${model} via ${familyLabel(family)}${chosen === 'auto' ? ' (auto)' : ' (manual)'}.${freeNote}`, freeNote ? '' : 'success');
   }
   function updateOpenCodeGenerateState() {
@@ -232,8 +238,8 @@
       const proxy = await resolveOpenCodeProxy();
       const send = (url) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       let response;
-      try { response = await send(proxy.url ? buildOpenCodeURL(proxy.url, 'inference/v1/models') : `${OPENCODE_ORIGIN}/inference/v1/models`); }
-      catch (error) { if (!proxy.url) throw error; response = await send(buildOpenCodeURL(proxy.url, 'inference/v1/models')); }
+      try { response = await send(proxy.url ? buildOpenCodeURL(proxy.url, openCodeModelsPath(openCodePlan())) : `${OPENCODE_ORIGIN}/${openCodeModelsPath(openCodePlan())}`); }
+      catch (error) { if (!proxy.url) throw error; response = await send(buildOpenCodeURL(proxy.url, openCodeModelsPath(openCodePlan()))); }
       if (!response.ok) throw new Error(`OpenCode returned HTTP ${response.status}.`);
       const result = await response.json();
       const models = Array.isArray(result.data) ? result.data.filter((item) => item?.id).map((item) => ({ id: String(item.id), name: String(item.name || item.id) })) : [];
@@ -243,7 +249,7 @@
       const usable = fillOpenCodeModelSelect(models);
       if (!usable.length) throw new Error('OpenCode returned only models that this app cannot call as a chat model.');
       select.disabled = false;
-      preferredOpenCodeModel = usable.some((model) => model.id === preferredOpenCodeModel) ? preferredOpenCodeModel : (usable.find((model) => !isLikelyFreeModel(model.id)) || usable[0]).id;
+      preferredOpenCodeModel = usable.some((model) => model.id === preferredOpenCodeModel) ? preferredOpenCodeModel : (usable.find((model) => !(freeTierApplies() && isLikelyFreeModel(model.id))) || usable[0]).id;
       select.value = preferredOpenCodeModel;
       if (!['auto', 'openai-chat', 'openai-responses', 'anthropic', 'gemini'].includes($('#openCodeFamily').value)) $('#openCodeFamily').value = 'auto';
       preferredOpenCodeFamily = $('#openCodeFamily').value;
@@ -359,9 +365,7 @@
     const orgId = $('#opencodeOrgId').value.trim();
     if (orgId) headers['x-opencode-org-id'] = orgId;
     const proxy = await resolveOpenCodeProxy();
-    const path = family === 'gemini'
-      ? `inference/google/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`
-      : ({ 'openai-chat': 'inference/openai/v1/chat/completions', 'openai-responses': 'inference/openai/v1/responses', anthropic: 'inference/anthropic/v1/messages' })[family];
+    const path = openCodePathFor(openCodePlan(), family, model);
     const body = family === 'gemini'
       ? { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }] }
       : family === 'openai-chat'
@@ -369,7 +373,7 @@
         : family === 'openai-responses'
           ? { model, stream: true, instructions: system, input: [{ role: 'user', content: [{ type: 'input_text', text: user }] }] }
           : { model, stream: true, max_tokens: 16000, system, messages: [{ role: 'user', content: user }] };
-    if (family === 'anthropic') headers['anthropic-version'] = '2023-06-01';
+    Object.assign(headers, openCodeExtraHeaders(openCodePlan(), family, token, openCodeSessionId));
     return {
       family, model, headers, body, proxy, autoFamily: $('#openCodeFamily').value === 'auto',
       directUrl: buildOpenCodeURL(OPENCODE_ORIGIN, path),
