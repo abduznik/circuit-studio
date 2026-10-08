@@ -131,6 +131,8 @@
         <div class="ai-provider-panel" id="opencodeSettings" hidden>
           <label class="field-label" for="openCodePlan">OPENCODE PLAN</label>
           <select class="field-select" id="openCodePlan"><option value="go">OpenCode Go (subscription)</option><option value="inference">OpenCode Inference API (Console credits)</option></select>
+          <label class="field-label" for="openCodeThinking">THINKING <span class="optional-label">(Go chat models)</span></label>
+          <select class="field-select" id="openCodeThinking"><option value="off">Off: much faster for board generation (recommended)</option><option value="default">Model default (reasoning models can take minutes)</option></select>
           <label class="field-label" for="opencodeToken">OPENCODE API KEY / SERVICE-ACCOUNT TOKEN</label>
           <div class="ai-secret-row"><input class="field-input" id="opencodeToken" type="password" autocomplete="off" placeholder="Paste your OpenCode Console service-account token" /><button class="small-action" id="toggleOpenCodeTokenButton" type="button" title="Show or hide token">Show</button><button class="button button-quiet ai-clear-key" id="clearOpenCodeTokenButton" type="button">Clear saved token</button></div>
           <div class="ai-storage-row"><label><input id="rememberOpenCodeToken" type="checkbox" /> Remember token on this browser</label><span id="openCodeTokenStorageState">Token stays in memory for this tab.</span></div>

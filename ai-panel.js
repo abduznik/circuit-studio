@@ -13,7 +13,7 @@
   const AI_SETTINGS_KEY = 'circuit-studio.ai-settings.v1';
   const AI_KEY_STORAGE_KEY = 'circuit-studio.ai-key.v1';
   const AI_OPENCODE_TOKEN_KEY = 'circuit-studio.opencode-token.v1';
-  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, buildOpenCodeURL, openCodeDeltaText, openCodeReasoningText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel, familyMismatchHint, readSseStream } = window.CircuitOpenCode;
+  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, openCodeThinkingParams, shouldRetryWithoutThinking, buildOpenCodeURL, openCodeDeltaText, openCodeReasoningText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel, familyMismatchHint, readSseStream } = window.CircuitOpenCode;
   function buildAiPrompt() {
     const brief = $('#designBrief').value.trim();
     if (!brief) { setAiValidation('Describe the circuit or PCB you want first.', 'error'); return null; }
@@ -71,6 +71,7 @@
       if (saved.openCodeModel) preferredOpenCodeModel = saved.openCodeModel;
       if (saved.openCodeFamily) { preferredOpenCodeFamily = saved.openCodeFamily; $('#openCodeFamily').value = saved.openCodeFamily; }
       if (saved.openCodePlan === 'go' || saved.openCodePlan === 'inference') $('#openCodePlan').value = saved.openCodePlan;
+      if (saved.openCodeThinking === 'off' || saved.openCodeThinking === 'default') $('#openCodeThinking').value = saved.openCodeThinking;
       if (saved.openCodeOrgId) $('#opencodeOrgId').value = saved.openCodeOrgId;
       if (saved.openCodeProxyUrl) $('#openCodeProxyUrl').value = saved.openCodeProxyUrl;
       const rememberedKey = localStorage.getItem(AI_KEY_STORAGE_KEY);
@@ -89,6 +90,7 @@
       openCodeModel: $('#openCodeModelSelect').value || preferredOpenCodeModel,
       openCodeFamily: $('#openCodeFamily').value,
       openCodePlan: $('#openCodePlan').value,
+      openCodeThinking: $('#openCodeThinking').value,
       openCodeOrgId: $('#opencodeOrgId').value.trim(),
       openCodeProxyUrl: $('#openCodeProxyUrl').value.trim(),
     };
@@ -159,6 +161,7 @@
     $('#aiConnectionMode').addEventListener('change', () => { updateAiConnectionUi(); saveAiSettings(); });
     ['aiBaseUrl', 'aiModel', 'opencodeOrgId', 'openCodeProxyUrl'].forEach((id) => $(`#${id}`).addEventListener('change', saveAiSettings));
     $('#openCodeModelSelect').addEventListener('change', () => { preferredOpenCodeModel = $('#openCodeModelSelect').value; saveAiSettings(); updateOpenCodeGenerateState(); updateOpenCodeModelStatus(); });
+    $('#openCodeThinking').addEventListener('change', saveAiSettings);
     $('#openCodePlan').addEventListener('change', () => { saveAiSettings(); invalidateOpenCodeVerification(); });
     $('#openCodeFamily').addEventListener('change', () => { preferredOpenCodeFamily = $('#openCodeFamily').value; saveAiSettings(); updateOpenCodeModelStatus(); });
     $('#rememberAiKey').addEventListener('change', () => { persistAiKeyPreference(); saveAiSettings(); });
@@ -369,7 +372,7 @@
     const body = family === 'gemini'
       ? { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }] }
       : family === 'openai-chat'
-        ? { model, stream: true, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }
+        ? { model, stream: true, ...openCodeThinkingParams(openCodePlan(), family, $('#openCodeThinking').value === 'off'), messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }
         : family === 'openai-responses'
           ? { model, stream: true, instructions: system, input: [{ role: 'user', content: [{ type: 'input_text', text: user }] }] }
           : { model, stream: true, max_tokens: 16000, system, messages: [{ role: 'user', content: user }] };
@@ -382,9 +385,17 @@
   }
   async function sendOpenCodeRequest(request) {
     const attempt = async (url) => {
-      const response = await fetch(url, { method: 'POST', headers: request.headers, body: JSON.stringify(request.body) });
+      const post = (body) => fetch(url, { method: 'POST', headers: request.headers, body: JSON.stringify(body) });
+      let response = await post(request.body);
       if (response.ok) return response;
-      const raw = await response.text();
+      let raw = await response.text();
+      // A model that rejects the reasoning-off parameter is retried once without it.
+      if (request.body.reasoning_effort && shouldRetryWithoutThinking(response.status, raw)) {
+        const { reasoning_effort: dropped, ...plain } = request.body;
+        response = await post(plain);
+        if (response.ok) return response;
+        raw = await response.text();
+      }
       return { error: `OpenCode Inference returned HTTP ${response.status}: ${openCodeErrorDetail(raw)}${response.status === 402 ? ' Add credits in the OpenCode Console (Billing); the token is valid but the account has no funds.' : ''}${familyMismatchHint(response.status, request.autoFamily)}` };
     };
     if (request.proxyUrl) return attempt(request.proxyUrl);

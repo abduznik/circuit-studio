@@ -87,6 +87,16 @@
     if (!path) throw new Error(`Unknown OpenCode API family: ${family}`);
     return path;
   }
+  /** Extra body fields that switch reasoning off. Verified live on Go chat models: `reasoning_effort: "none"` is accepted by
+      every tested model and cuts reasoning to ~0, turning a 10+ minute mimo-v2.6-flash board generation into ~25 s. The
+      `thinking` object is rejected by some models (400), so it is not used. Other plans/families keep the model default. */
+  function openCodeThinkingParams(plan, family, thinkingOff) {
+    return thinkingOff && plan === 'go' && family === 'openai-chat' ? { reasoning_effort: 'none' } : {};
+  }
+  /** True when a 400 looks like the model rejecting the reasoning parameter, so the request can be retried without it. */
+  function shouldRetryWithoutThinking(status, rawBody) {
+    return status === 400 && /reasoning|thinking|unsupported_parameter|unknown_parameter|unknown field/i.test(String(rawBody));
+  }
   /** Headers the plan requires beyond content type and bearer auth. */
   function openCodeExtraHeaders(plan, family, token, sessionId) {
     if (plan !== 'go') return family === 'anthropic' ? { 'anthropic-version': '2023-06-01' } : {};
@@ -181,5 +191,5 @@
   function familyMismatchHint(status, autoDetected) {
     return autoDetected && [400, 404, 422].includes(status) ? ' The API family was auto-detected and may be wrong for this model: try another family in "API FAMILY".' : '';
   }
-  return { openCodeReasoningText, OPENCODE_PLANS, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, readSseStream, familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
+  return { openCodeThinkingParams, shouldRetryWithoutThinking, openCodeReasoningText, OPENCODE_PLANS, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, readSseStream, familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
 });

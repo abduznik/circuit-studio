@@ -129,3 +129,19 @@ test('reasoning deltas are separated from answer text for each family', () => {
   assert.equal(core.openCodeReasoningText({ choices: [{ delta: { content: 'a' } }] }, 'openai-chat'), '');
   assert.equal(core.openCodeReasoningText(null, 'gemini'), '');
 });
+
+test('thinking is switched off only where it is verified (Go chat), and only when asked', () => {
+  assert.deepEqual(core.openCodeThinkingParams('go', 'openai-chat', true), { reasoning_effort: 'none' });
+  assert.deepEqual(core.openCodeThinkingParams('go', 'openai-chat', false), {});
+  assert.deepEqual(core.openCodeThinkingParams('go', 'anthropic', true), {});
+  assert.deepEqual(core.openCodeThinkingParams('go', 'openai-responses', true), {});
+  assert.deepEqual(core.openCodeThinkingParams('inference', 'openai-chat', true), {});
+});
+
+test('a 400 that blames the reasoning parameter is retried without it; other errors are not', () => {
+  assert.ok(core.shouldRetryWithoutThinking(400, '{"error":"[unsupported_parameter] The request contains an unsupported parameter"}'));
+  assert.ok(core.shouldRetryWithoutThinking(400, 'invalid request body: json: unknown field "reasoning_effort"'));
+  assert.ok(!core.shouldRetryWithoutThinking(400, '{"error":"messages is required"}'));
+  assert.ok(!core.shouldRetryWithoutThinking(401, 'unsupported_parameter'));
+  assert.ok(!core.shouldRetryWithoutThinking(402, 'reasoning'));
+});

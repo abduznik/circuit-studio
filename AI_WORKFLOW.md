@@ -147,3 +147,7 @@ After an AI load, a dismissible notice lists the model's `assumptions` and heuri
 ## OpenCode Go
 
 The **OpenCode plan** selector switches between the Inference API (`/inference/...`, Console credits) and the Go subscription (`/zen/go/v1/...`). Verified live against Go: it requires an `x-opencode-session` header (otherwise `MissingSessionID`), Anthropic-style `/messages` also needs `x-api-key`, `gpt-*` is Responses-only, `claude-*` is Messages-only, and other models work on Chat Completions. Go generation sends no CORS headers either, so the relay or proxy is still required; the proxy adds a session id and user agent when a client sends none. Several Go models are reasoning models that stream `reasoning_content` before `content`, so the first visible output can take a while.
+
+### Thinking on OpenCode Go
+
+Reasoning models can spend minutes thinking before the first answer token (`mimo-v2.6-flash` produced 88k characters of reasoning and no answer in 570 s on the full board prompt). The **Thinking** setting (default **Off**) sends `reasoning_effort: "none"` on Go chat models: every Go model tested accepted it, and the same `mimo-v2.6-flash` board then took about 23 s. The `thinking: {"type":"disabled"}` object is not used because `glm-5.3-flash` and `omen-alpha` reject it with a 400 and `kimi-k3`/`hy3` ignore it. If a model does reject the parameter, the request is retried once without it. The Anthropic Messages and OpenAI Responses families keep the model default.
