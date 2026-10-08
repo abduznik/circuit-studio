@@ -6,6 +6,16 @@ A browser prototype for **PCB/electronics EDA**, with a schematic view and a cus
 
 Open `index.html` in a current browser. No build or package installation is needed. The built-in example is the ESP32 + IPS display project.
 
+### Using OpenCode with your token
+
+OpenCode's generation endpoints send no CORS headers (issue #1), so a plain static page cannot call them. Run the bundled server, which serves the app and relays OpenCode calls locally:
+
+```bash
+node server.js          # http://127.0.0.1:8080, Node 22.12+, no dependencies
+```
+
+Open **Build with AI**, choose **OpenCode Inference**, paste your Console service-account token, click **Verify token & load models**, pick a paid model (free-tier models are marked and only work inside the OpenCode app), and generate. The token goes only from your browser to the local server to opencode.ai.
+
 To load the included project file instead, choose **Open** and select [`examples/esp32-st7789-ips.circuit.json`](examples/esp32-st7789-ips.circuit.json).
 
 ## ESP32 + ST7789 example
@@ -42,3 +52,11 @@ For AI prompt structure, local credential behavior, API connections, import chec
 - [Espressif ESP32-WROOM-32E datasheet](https://documentation.espressif.com/esp32-wroom-32e_esp32-wroom-32ue_datasheet_en.pdf)
 - [LCDWIKI MSP1691 1.69-inch ST7789 SPI module manual](https://www.lcdwiki.com/res/MSP1691/1.69inch_4-line-SPI_IPS_Module_MSP1691_User_Manual_EN.pdf)
 - [Espressif's official KiCad ESP32-WROOM-32E footprint](https://github.com/espressif/kicad-libraries/blob/master/footprints/Espressif.pretty/ESP32-WROOM-32E.kicad_mod)
+
+## Tests
+
+```bash
+npm test    # Node 22.12+, no dependencies
+```
+
+Covers family routing, free-model flagging, stream/response parsing, error handling, and the CORS relay/local server (against a mock OpenCode upstream, including unbuffered SSE and the path allow-list).

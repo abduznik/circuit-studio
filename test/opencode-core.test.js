@@ -1,0 +1,71 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const core = require('../opencode-core.js');
+
+test('family routing follows the documented endpoint table (issue #6)', () => {
+  const cases = {
+    'gpt-5.1': 'openai-responses', 'grok-4': 'openai-responses', 'muse-spark-1.3': 'openai-responses',
+    'claude-sonnet-4-5': 'anthropic', 'gemini-3-pro': 'gemini',
+    'qwen3.6-plus': 'anthropic', 'qwen3.7-max': 'anthropic', 'qwen3.8-flash': 'anthropic',
+    'qwen3.8-max': 'openai-chat',
+    'kimi-k2': 'openai-chat', 'glm-4.6': 'openai-chat', 'deepseek-v3': 'openai-chat', 'totally-new-model': 'openai-chat',
+    'jev-1': 'unsupported', 'JEV-2': 'unsupported',
+  };
+  for (const [model, family] of Object.entries(cases)) assert.equal(core.openCodeFamilyFor(model), family, model);
+});
+
+test('free-tier models are flagged, paid ones are not (issue #2)', () => {
+  for (const id of ['big-pickle', 'space-bunny-free', 'mimo-v2', 'ling-1t', 'nemotron-3', 'longcat-flash', 'muse-spark-1.3-contributor-free']) assert.ok(core.isLikelyFreeModel(id), id);
+  for (const id of ['gpt-5.1', 'claude-sonnet-4-5', 'kimi-k2', 'qwen3.8-max']) assert.ok(!core.isLikelyFreeModel(id), id);
+});
+
+test('buildOpenCodeURL builds direct and proxied URLs and rejects unsafe proxies', () => {
+  assert.equal(core.buildOpenCodeURL(core.OPENCODE_ORIGIN, 'inference/v1/models'), 'https://opencode.ai/inference/v1/models');
+  assert.equal(core.buildOpenCodeURL('https://p.example/w/', 'inference/google/v1beta/models/g:streamGenerateContent?alt=sse'), 'https://p.example/w/inference/google/v1beta/models/g:streamGenerateContent?alt=sse');
+  assert.throws(() => core.buildOpenCodeURL('https://u:p@p.example', 'x'));
+  assert.throws(() => core.buildOpenCodeURL('https://p.example?x=1', 'x'));
+  assert.throws(() => core.buildOpenCodeURL('ftp://p.example', 'x'));
+  assert.throws(() => core.buildOpenCodeURL('not a url', 'x'));
+});
+
+test('streaming delta extraction for each family', () => {
+  assert.equal(core.openCodeDeltaText({ choices: [{ delta: { content: 'a' } }] }, 'openai-chat'), 'a');
+  assert.equal(core.openCodeDeltaText({ choices: [{ delta: { content: [{ text: 'a' }, { text: 'b' }] } }] }, 'openai-chat'), 'ab');
+  assert.equal(core.openCodeDeltaText({ type: 'response.output_text.delta', delta: 'x' }, 'openai-responses'), 'x');
+  assert.equal(core.openCodeDeltaText({ type: 'response.completed', response: { output_text: 'full' } }, 'openai-responses'), '');
+  assert.equal(core.openCodeDeltaText({ type: 'content_block_delta', delta: { text: 'y' } }, 'anthropic'), 'y');
+  assert.equal(core.openCodeDeltaText({ type: 'ping' }, 'anthropic'), '');
+  assert.equal(core.openCodeDeltaText({ candidates: [{ content: { parts: [{ text: 'g' }, { text: 'h' }] } }] }, 'gemini'), 'gh');
+  assert.equal(core.openCodeDeltaText(null, 'gemini'), '');
+});
+
+test('non-streaming responses for each family', () => {
+  assert.equal(core.openCodeWholeResponseText({ choices: [{ message: { content: 'c' } }] }, 'openai-chat'), 'c');
+  assert.equal(core.openCodeWholeResponseText({ output_text: 'r' }, 'openai-responses'), 'r');
+  assert.equal(core.openCodeWholeResponseText({ output: [{ content: [{ text: 'r1' }, { text: 'r2' }] }] }, 'openai-responses'), 'r1r2');
+  assert.equal(core.openCodeWholeResponseText({ content: [{ text: 'a' }, { text: 'b' }] }, 'anthropic'), 'ab');
+  assert.equal(core.openCodeWholeResponseText({ candidates: [{ content: { parts: [{ text: 'g' }] } }] }, 'gemini'), 'g');
+});
+
+test('Gemini bulk fallback handles chunked JSON arrays and raw text scraping', () => {
+  const chunk = (t) => ({ candidates: [{ content: { parts: [{ text: t }] } }] });
+  assert.equal(core.openCodeGeminiBulkText(JSON.stringify([chunk('a'), chunk('b')])), 'ab');
+  assert.equal(core.openCodeGeminiBulkText(`data: ${JSON.stringify(chunk('x'))}\n\ndata: ${JSON.stringify(chunk('y'))}`), 'xy');
+  assert.equal(core.openCodeGeminiBulkText('[{"foo":1,"text":"he said \\"hi\\""'), 'he said "hi"');
+});
+
+test('error details: FreeTierError is explained, others pass through (issue #2)', () => {
+  const free = core.openCodeErrorDetail(JSON.stringify({ type: 'error', error: { type: 'FreeTierError', message: "OpenCode's free tier can only be used from within OpenCode" } }));
+  assert.match(free, /paid model/);
+  assert.equal(core.openCodeErrorDetail(JSON.stringify({ error: { message: 'bad key' } })), 'bad key');
+  assert.equal(core.openCodeErrorDetail('plain text failure'), 'plain text failure');
+  assert.equal(core.openCodeErrorDetail('x'.repeat(500)).length, 300);
+});
+
+test('extractCompleteJsonArrayObjects returns only finished objects, tolerating braces in strings', () => {
+  const partial = '{"components":[{"ref":"R1","value":"a } b"},{"ref":"C1"},{"ref":"U1","val';
+  assert.deepEqual(core.extractCompleteJsonArrayObjects(partial, 'components').map((c) => c.ref), ['R1', 'C1']);
+  assert.deepEqual(core.extractCompleteJsonArrayObjects('{"nets":[]}', 'nets'), []);
+  assert.deepEqual(core.extractCompleteJsonArrayObjects('{}', 'nets'), []);
+});

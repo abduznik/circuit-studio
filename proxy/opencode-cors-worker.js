@@ -25,7 +25,7 @@
  * request arbitrary URLs.
  */
 
-const UPSTREAM = 'https://opencode.ai';
+const DEFAULT_UPSTREAM = 'https://opencode.ai';
 const ALLOWED_PATHS = new Set([
   'inference/v1/models',
   'inference/openai/v1/chat/completions',
@@ -55,7 +55,8 @@ function json(body, status) {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
+    const UPSTREAM = (env && env.UPSTREAM) || DEFAULT_UPSTREAM;
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
     if (request.method !== 'GET' && request.method !== 'POST') return json({ error: { message: 'Method not allowed' } }, 405);
 
