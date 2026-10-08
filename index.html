@@ -147,6 +147,8 @@
       </div>
       <label class="field-label" for="aiMode">WORKING MODE</label>
       <select class="field-select ai-mode" id="aiMode"><option value="new">Create a new PCB project</option><option value="modify">Modify the open project</option></select>
+      <label class="field-label" for="aiRouting">PCB ROUTING</label>
+      <select class="field-select ai-mode" id="aiRouting"><option value="place">Placement and nets only: fast, route afterwards</option><option value="route">Also route copper traces: larger and slower</option></select>
       <label class="field-label" for="designBrief">WHAT SHOULD THE DESIGN DO?</label>
       <textarea id="designBrief" class="ai-textarea ai-brief" placeholder="Example: Add a microSD card on SPI to the ESP32 display board. Keep the ST7789 on VSPI, use a separate CS pin, add the required pull-ups/decoupling, and keep all signals at 3.3 V."></textarea>
       <div class="ai-step-row" id="aiHandoffControls"><div><b>1</b><span>Describe the board</span></div><div><b>2</b><span>Copy the prompt to an AI assistant</span></div><div><b>3</b><span>Paste its JSON response here</span></div></div>

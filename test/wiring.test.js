@@ -38,3 +38,12 @@ test('the validator rules the self-check mentions still exist in app.js (keep th
   const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
   for (const fragment of ['a net needs at least two', 'assigned to multiple nets', 'is not declared', 'waypoint lies outside the board', 'is not enabled on the board']) assert.ok(app.includes(fragment), fragment);
 });
+
+test('LED and diode parts carry footprints and pad numbers so the AI can use them', () => {
+  const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  for (const part of ['led', 'diode']) {
+    const line = app.split('\n').find((l) => l.trim().startsWith(`${part}: {`));
+    assert.ok(line && /footprint: '/.test(line) && (line.match(/pad: '/g) || []).length === 2, part);
+  }
+  assert.ok(app.includes("'LED_SMD:LED_0603_1608Metric'") && app.includes("'Diode_SMD:D_SOD-123'"));
+});

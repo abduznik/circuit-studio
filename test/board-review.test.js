@@ -40,3 +40,12 @@ test('the bundled example reviews without throwing and the summary admits its li
   assert.ok(loadedSummary(example).includes(NOT_CHECKED));
   assert.match(NOT_CHECKED, /clearance/);
 });
+
+test('a board with no tracks gets one honest note instead of a per-net list', () => {
+  const project = base(); project.nets = [{ name: 'A', endpoints: [1, 2] }, { name: 'B', endpoints: [1, 2] }];
+  const warnings = reviewBoard(project);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0].title, /No copper routing/);
+  assert.match(warnings[0].detail, /ratsnest/);
+  assert.equal(reviewBoard(base()).length, 0);
+});

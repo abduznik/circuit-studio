@@ -28,10 +28,13 @@
     const nets = Array.isArray(project?.nets) ? project.nets : [];
     const routed = new Set(tracks.map((t) => t.net));
 
-    const unrouted = nets.filter((net) => (net.endpoints?.length || 0) >= 2 && !routed.has(net.name)).map((net) => net.name);
+    if (!tracks.length && nets.some((net) => (net.endpoints?.length || 0) >= 2)) {
+      warnings.push({ title: 'No copper routing was generated', detail: 'Parts are placed and the nets are defined (connections show as a ratsnest). Route the board in the editor or a CAD tool before building it.' });
+    }
+    const unrouted = tracks.length ? nets.filter((net) => (net.endpoints?.length || 0) >= 2 && !routed.has(net.name)).map((net) => net.name) : [];
     if (unrouted.length) warnings.push({ title: `${unrouted.length} net${unrouted.length === 1 ? ' has' : 's have'} no routed track`, detail: `${unrouted.join(', ')}. Ground or power may be meant for a plane or pour, which this model does not describe.` });
 
-    const strayVias = vias.filter((via) => !routed.has(via.net));
+    const strayVias = tracks.length ? vias.filter((via) => !routed.has(via.net)) : [];
     if (strayVias.length) warnings.push({ title: `${strayVias.length} via${strayVias.length === 1 ? '' : 's'} on a net with no track`, detail: `Nets: ${[...new Set(strayVias.map((v) => v.net || '(none)'))].join(', ')}.` });
 
     const crossings = new Set();

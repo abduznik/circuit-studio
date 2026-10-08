@@ -157,3 +157,14 @@ Reasoning models can spend minutes thinking before the first answer token (`mimo
 The design prompt includes a SELF-CHECK checklist (`AI_SELF_CHECK` in `opencode-core.js`) that mirrors what `validateGeneratedProject` in `app.js` enforces: unique ids/refs, supported parts and footprints, nets with at least two endpoints, one net per pad, tracks matching their pad nets, waypoints inside the board. Keep the checklist and the validator in sync (a test guards the key phrases).
 
 In direct mode the app also repairs automatically: if the response fails validation it re-asks the model with the full problem list and the previous JSON, up to 2 times (3 attempts total), showing "Self-check 1/2: …" while it does. If it still fails, the problems stay on screen and the **Fix with AI** button retries once more; in copy/paste mode that button copies a repair prompt for your assistant instead.
+
+## Output size, routing and parts (what the model is told)
+
+Generation used to produce about 50k characters for a simple board. Causes and fixes:
+- The prompt showed the model a pretty-printed example, so it copied the indentation (about half the output was whitespace). The example is now minified and the model is told to answer on one line.
+- The app derives `wires` and `padNets` itself, and assumptions had grown to 13 long items: the model is told not to write the first two and to keep assumptions to six short ones.
+- **PCB routing** (new dialog option, default "placement and nets only") controls whether the model also routes copper, which was about a third of the output. Without routes the review notice shows a single "no copper routing" note instead of a per-net list.
+- LED and Diode parts had no footprint or pad numbers, so they were hidden from the model and it drew LEDs as resistors. They now have 0603 / SOD-123 footprints (pad 1 = cathode, pad 2 = anode).
+- JSON syntax errors sent back for repair include a marked excerpt of the offending text.
+
+Measured on `mimo-v2.6-flash` (thinking off) with the brief "add a 6 led state with switches...": 9.4k characters in about 26 s, one JSON typo that a real repair round fixed, then 23 parts (including `led`) and 24 nets loaded and validated.

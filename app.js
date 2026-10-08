@@ -11,8 +11,8 @@
     resistor: { name: 'Resistor', group: 'passive', prefix: 'R', defaultValue: '10kΩ', pins: [{ x: -60, y: 0, name: '1', pad: '1' }, { x: 60, y: 0, name: '2', pad: '2' }], icon: 'resistor', footprint: 'Resistor_SMD:R_0603_1608Metric' },
     capacitor: { name: 'Capacitor', group: 'passive', prefix: 'C', defaultValue: '100nF', pins: [{ x: 0, y: -50, name: '1', pad: '1' }, { x: 0, y: 50, name: '2', pad: '2' }], icon: 'capacitor', footprint: 'Capacitor_SMD:C_0603_1608Metric' },
     inductor: { name: 'Inductor', group: 'passive', prefix: 'L', defaultValue: '10µH', pins: [{ x: -60, y: 0, name: '1' }, { x: 60, y: 0, name: '2' }], icon: 'inductor' },
-    led: { name: 'LED', group: 'semiconductor', prefix: 'D', defaultValue: 'Red', pins: [{ x: -55, y: 0, name: 'A' }, { x: 55, y: 0, name: 'K' }], icon: 'led' },
-    diode: { name: 'Diode', group: 'semiconductor', prefix: 'D', defaultValue: '1N4148', pins: [{ x: -55, y: 0, name: 'A' }, { x: 55, y: 0, name: 'K' }], icon: 'diode' },
+    led: { name: 'LED', group: 'semiconductor', prefix: 'D', defaultValue: 'Red', pins: [{ x: -55, y: 0, name: 'A', pad: '2' }, { x: 55, y: 0, name: 'K', pad: '1' }], icon: 'led', footprint: 'LED_SMD:LED_0603_1608Metric' },
+    diode: { name: 'Diode', group: 'semiconductor', prefix: 'D', defaultValue: '1N4148', pins: [{ x: -55, y: 0, name: 'A', pad: '2' }, { x: 55, y: 0, name: 'K', pad: '1' }], icon: 'diode', footprint: 'Diode_SMD:D_SOD-123' },
     npn: { name: 'NPN transistor', group: 'semiconductor', prefix: 'Q', defaultValue: '2N3904', pins: [{ x: -50, y: -35, name: 'B' }, { x: 50, y: -45, name: 'C' }, { x: 50, y: 45, name: 'E' }], icon: 'npn' },
     opamp: { name: 'Op-amp', group: 'semiconductor', prefix: 'U', defaultValue: 'LM358', pins: [{ x: -60, y: -25, name: '+' }, { x: -60, y: 25, name: '−' }, { x: 60, y: 0, name: 'OUT' }], icon: 'opamp' },
     voltage: { name: 'Voltage source', group: 'power', prefix: 'V', defaultValue: '5V', pins: [{ x: 0, y: -45, name: '+' }, { x: 0, y: 45, name: '−' }], icon: 'voltage' },
@@ -38,6 +38,8 @@
       source: 'Generic 2.54 mm through-hole power input header; regulated 3.3 V only.',
     },
     'Resistor_SMD:R_0603_1608Metric': { name: 'R_0603_1608Metric', kind: 'smd', body: { x: -1.6, y: -0.8, w: 3.2, h: 1.6 }, pads: [{ number: '1', name: '1', x: -0.85, y: 0, shape: 'rect', w: 0.9, h: 1, type: 'smd' }, { number: '2', name: '2', x: 0.85, y: 0, shape: 'rect', w: 0.9, h: 1, type: 'smd' }], source: 'KiCad standard 0603 metric chip resistor footprint.' },
+    'LED_SMD:LED_0603_1608Metric': { name: 'LED_0603_1608Metric', kind: 'smd', body: { x: -1.6, y: -0.8, w: 3.2, h: 1.6 }, pads: [{ number: '1', name: 'K', x: -0.8, y: 0, shape: 'rect', w: 0.8, h: 0.8, type: 'smd' }, { number: '2', name: 'A', x: 0.8, y: 0, shape: 'rect', w: 0.8, h: 0.8, type: 'smd' }], source: 'KiCad standard 0603 LED footprint: pad 1 is the cathode, pad 2 the anode.' },
+    'Diode_SMD:D_SOD-123': { name: 'D_SOD-123', kind: 'smd', body: { x: -1.9, y: -0.8, w: 3.8, h: 1.6 }, pads: [{ number: '1', name: 'K', x: -1.65, y: 0, shape: 'rect', w: 0.9, h: 1.2, type: 'smd' }, { number: '2', name: 'A', x: 1.65, y: 0, shape: 'rect', w: 0.9, h: 1.2, type: 'smd' }], source: 'KiCad standard SOD-123 diode footprint: pad 1 is the cathode, pad 2 the anode.' },
     'Capacitor_SMD:C_0603_1608Metric': { name: 'C_0603_1608Metric', kind: 'smd', body: { x: -1.6, y: -0.8, w: 3.2, h: 1.6 }, pads: [{ number: '1', name: '1', x: -0.85, y: 0, shape: 'rect', w: 0.9, h: 1, type: 'smd' }, { number: '2', name: '2', x: 0.85, y: 0, shape: 'rect', w: 0.9, h: 1, type: 'smd' }], source: 'KiCad standard 0603 metric chip capacitor footprint.' },
   };
 

@@ -93,9 +93,17 @@
 2. Every component: unique id, unique ref, a type from the supported list, a footprint from the supported list, schematic {x,y} and pcb {x,y} placements, and the pcb anchor inside the board.
 3. Every net: unique non-empty name and at least TWO endpoints. A net with one endpoint is rejected: add the other pad it connects to, or delete the net.
 4. Every endpoint: componentId of a component you defined and a pad that exists in that part's pin list (pads are strings). No pad may appear in more than one net.
-5. Every track: net declared in nets, layer enabled on the board, both from/to pads already assigned to that SAME net, and every waypoint inside the board.
+5. Every track (only if you were asked to route): net declared in nets, layer enabled on the board, both from/to pads already assigned to that SAME net, and every waypoint inside the board.
 6. Count your nets one by one against rule 3 before replying.
 If you are later told your response failed validation, return the complete corrected JSON object (not a diff) and fix every listed problem.`;
+  /** Human-readable description of a JSON syntax error with the surrounding text, so a model can find and fix it. */
+  function describeJsonError(message, source) {
+    const match = /position (\d+)/.exec(String(message));
+    if (!match) return `The response was not valid JSON: ${message}`;
+    const at = Number(match[1]);
+    const before = source.slice(Math.max(0, at - 70), at); const after = source.slice(at, at + 40);
+    return `The response was not valid JSON: ${message}. The error is at the marker in this excerpt: ...${before}<<HERE>>${after}...`;
+  }
   /** Prompt section asking a model to fix a rejected project. All issues are listed (the UI only shows the first few). */
   function buildRepairRequest(issues, previous) {
     const list = issues.map((issue) => `- ${issue}`).join('\n');
@@ -205,5 +213,5 @@ If you are later told your response failed validation, return the complete corre
   function familyMismatchHint(status, autoDetected) {
     return autoDetected && [400, 404, 422].includes(status) ? ' The API family was auto-detected and may be wrong for this model: try another family in "API FAMILY".' : '';
   }
-  return { AI_SELF_CHECK, buildRepairRequest, openCodeThinkingParams, shouldRetryWithoutThinking, openCodeReasoningText, OPENCODE_PLANS, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, readSseStream, familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
+  return { describeJsonError, AI_SELF_CHECK, buildRepairRequest, openCodeThinkingParams, shouldRetryWithoutThinking, openCodeReasoningText, OPENCODE_PLANS, openCodeModelsPath, openCodePathFor, openCodeExtraHeaders, readSseStream, familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
 });

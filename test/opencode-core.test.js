@@ -158,3 +158,12 @@ test('self-check checklist covers every rule the validator enforces', () => {
   const rules = [/at least TWO endpoints/, /unique id, unique ref/, /footprint from the supported list/, /No pad may appear in more than one net/, /SAME net/, /waypoint inside the board/, /F\.Cu/, /complete corrected JSON/];
   for (const rule of rules) assert.match(core.AI_SELF_CHECK, rule);
 });
+
+test('JSON syntax errors are described with a marked excerpt for repair', () => {
+  const source = '{"id":"R6","type="resistor","ref":"R6"}';
+  let message; try { JSON.parse(source); } catch (error) { message = error.message; }
+  const text = core.describeJsonError(message, source);
+  assert.match(text, /<<HERE>>/);
+  assert.match(text, /"type=<<HERE>>|"type<<HERE>>=|type="<<HERE>>/);
+  assert.match(core.describeJsonError('weird message', 'x'), /not valid JSON: weird message$/);
+});
