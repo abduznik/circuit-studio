@@ -72,7 +72,7 @@
   const AI_SETTINGS_KEY = 'circuit-studio.ai-settings.v1';
   const AI_KEY_STORAGE_KEY = 'circuit-studio.ai-key.v1';
   const AI_OPENCODE_TOKEN_KEY = 'circuit-studio.opencode-token.v1';
-  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel, familyMismatchHint } = window.CircuitOpenCode;
+  const { OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel, familyMismatchHint, readSseStream } = window.CircuitOpenCode;
 
   const $ = (selector) => document.querySelector(selector);
   const svg = $('#schematic');
@@ -1135,23 +1135,13 @@
       if (!text) throw new Error('The API response did not contain assistant text.');
       updateAiStream(text); return text;
     }
-    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let output = ''; let finished = false;
-    const consumeEvent = (event) => {
-      const data = event.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
-      if (!data || data === '[DONE]') { if (data === '[DONE]') finished = true; return; }
+    let output = '';
+    await readSseStream(response, (data) => {
       let chunk; try { chunk = JSON.parse(data); } catch { return; }
       const delta = chunk.choices?.[0]?.delta?.content;
       if (typeof delta === 'string') { output += delta; updateAiStream(output); }
       else if (Array.isArray(delta)) { const text = delta.map((part) => part.text || '').join(''); output += text; if (text) updateAiStream(output); }
-    };
-    while (!finished) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true }); buffer = buffer.replace(/\r\n/g, '\n');
-      let boundary;
-      while ((boundary = buffer.indexOf('\n\n')) >= 0) { consumeEvent(buffer.slice(0, boundary)); buffer = buffer.slice(boundary + 2); if (finished) break; }
-    }
-    buffer += decoder.decode(); if (buffer.trim()) consumeEvent(buffer);
+    });
     if (!output.trim()) throw new Error('The API stream ended without generated text.');
     return output;
   }
@@ -1210,7 +1200,7 @@
       const response = await fetch(url, { method: 'POST', headers: request.headers, body: JSON.stringify(request.body) });
       if (response.ok) return response;
       const raw = await response.text();
-      return { error: `OpenCode Inference returned HTTP ${response.status}: ${openCodeErrorDetail(raw)}${familyMismatchHint(response.status, request.autoFamily)}` };
+      return { error: `OpenCode Inference returned HTTP ${response.status}: ${openCodeErrorDetail(raw)}${response.status === 402 ? ' Add credits in the OpenCode Console (Billing); the token is valid but the account has no funds.' : ''}${familyMismatchHint(response.status, request.autoFamily)}` };
     };
     if (request.proxyUrl) return attempt(request.proxyUrl);
     try { return await attempt(request.directUrl); }
@@ -1235,10 +1225,8 @@
       if (!text.trim()) throw new Error('OpenCode Inference returned no assistant text.');
       updateAiStream(text); return text;
     }
-    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let output = ''; let stopped = false;
-    const consumeEvent = (event) => {
-      const data = event.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
-      if (!data || data === '[DONE]') { if (data === '[DONE]') stopped = true; return; }
+    let output = '';
+    await readSseStream(response, (data) => {
       let chunk; try { chunk = JSON.parse(data); } catch { return; }
       if (request.family === 'openai-responses' && (chunk?.type === 'response.failed' || chunk?.type === 'response.error')) {
         const detail = chunk.response?.error?.message || chunk.message || 'unknown streaming error';
@@ -1247,15 +1235,7 @@
       if (request.family === 'anthropic' && chunk?.type === 'error') throw new Error(`OpenCode Inference stream error: ${chunk.error?.message || 'unknown streaming error'}`);
       const delta = openCodeDeltaText(chunk, request.family);
       if (delta) { output += delta; updateAiStream(output); }
-    };
-    while (!stopped) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true }); buffer = buffer.replace(/\r\n/g, '\n');
-      let boundary;
-      while ((boundary = buffer.indexOf('\n\n')) >= 0) { consumeEvent(buffer.slice(0, boundary)); buffer = buffer.slice(boundary + 2); if (stopped) break; }
-    }
-    buffer += decoder.decode(); if (buffer.trim()) consumeEvent(buffer);
+    });
     if (!output.trim()) throw new Error('The OpenCode Inference stream ended without generated text.');
     return output;
   }

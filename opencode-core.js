@@ -113,9 +113,27 @@
   // runtime FreeTierError handling stays the source of truth, this only warns early.
   const OPENCODE_FREE_MODELS = /^(big-pickle$|.*-free$|mimo-|ling-|nemotron-|longcat-)/;
   function isLikelyFreeModel(modelID) { return OPENCODE_FREE_MODELS.test(String(modelID).toLowerCase()); }
+  // Reads a Server-Sent Events body; calls onData(dataString) per event, stops when it returns true or on [DONE].
+  async function readSseStream(response, onData) {
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let stopped = false;
+    const consume = (event) => {
+      const data = event.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
+      if (!data) return;
+      if (data === '[DONE]') { stopped = true; return; }
+      if (onData(data)) stopped = true;
+    };
+    while (!stopped) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }); buffer = buffer.replace(/\r\n/g, '\n');
+      let boundary;
+      while ((boundary = buffer.indexOf('\n\n')) >= 0) { consume(buffer.slice(0, boundary)); buffer = buffer.slice(boundary + 2); if (stopped) break; }
+    }
+    buffer += decoder.decode(); if (!stopped && buffer.trim()) consume(buffer.replace(/\r\n/g, '\n'));
+  }
   // When auto-detect guessed the family and the endpoint rejects the model (issue #6), point at the manual override.
   function familyMismatchHint(status, autoDetected) {
     return autoDetected && [400, 404, 422].includes(status) ? ' The API family was auto-detected and may be wrong for this model: try another family in "API FAMILY".' : '';
   }
-  return { familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
+  return { readSseStream, familyMismatchHint, OPENCODE_ORIGIN, extractCompleteJsonArrayObjects, compatibleResponseText, openCodeFamilyFor, buildOpenCodeURL, openCodeDeltaText, openCodeWholeResponseText, openCodeGeminiBulkText, openCodeErrorDetail, isLikelyFreeModel };
 });

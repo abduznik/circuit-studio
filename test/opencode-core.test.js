@@ -77,3 +77,19 @@ test('family mismatch hint only appears for auto-detected families on rejection 
   assert.equal(core.familyMismatchHint(401, true), '');
   assert.equal(core.familyMismatchHint(403, true), '');
 });
+
+const sseResponse = (...parts) => ({ body: new ReadableStream({ start(controller) { parts.forEach((p) => controller.enqueue(new TextEncoder().encode(p))); controller.close(); } }) });
+
+test('readSseStream handles split chunks, CRLF, multi-line data, [DONE] and trailing unterminated events', async () => {
+  const got = [];
+  await core.readSseStream(sseResponse('data: {"a"', ':1}\r\n\r\nevent: x\ndata: l1\ndata: l2\n\n', 'data: [DONE]\n\ndata: after\n\n'), (d) => { got.push(d); });
+  assert.deepEqual(got, ['{"a":1}', 'l1\nl2']);
+  const tail = []; await core.readSseStream(sseResponse('data: one\n\ndata: two'), (d) => { tail.push(d); });
+  assert.deepEqual(tail, ['one', 'two']);
+});
+
+test('readSseStream stops when the handler returns true and propagates handler errors', async () => {
+  const got = []; await core.readSseStream(sseResponse('data: 1\n\ndata: 2\n\n'), (d) => { got.push(d); return true; });
+  assert.deepEqual(got, ['1']);
+  await assert.rejects(core.readSseStream(sseResponse('data: x\n\n'), () => { throw new Error('boom'); }), /boom/);
+});
